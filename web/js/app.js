@@ -371,16 +371,23 @@ function startRolling(m) {
   stopRolling();
   const moving = diceButtons.map((_, i) => i).filter((i) => !(m.held[i] && m.rollsLeft < ROLLS_PER_TURN - 1));
   // 시간 초과로 대신 굴리고 바로 다음 차례로 넘어간 경우는 보여줄 주사위가 없다.
-  if (reducedMotion.matches || moving.length === 0 || m.rollsLeft === ROLLS_PER_TURN) return;
+  if (moving.length === 0 || m.rollsLeft === ROLLS_PER_TURN) return;
+  const yacht = isYacht(m.dice) ? m.turn : null;
+  if (reducedMotion.matches) {
+    if (yacht) celebrateYacht(yacht);
+    return;
+  }
 
   const tray = $('tray');
   void tray.offsetWidth;
   tray.classList.add('landing');
 
+  let longest = 0;
   moving.forEach((i, order) => {
     const b = diceButtons[i];
     rollAnim.dice.add(i);
     const ms = 620 + order * 90 + Math.floor(Math.random() * 80);
+    longest = Math.max(longest, ms);
     const dir = Math.random() < 0.5 ? -1 : 1;
     b.style.setProperty('--roll-ms', `${ms}ms`);
     b.style.setProperty('--from-x', `${-(40 + Math.random() * 50)}px`);
@@ -410,6 +417,52 @@ function startRolling(m) {
     }, Math.round(ms * 0.8)));
     rollAnim.timers.push(setTimeout(() => b.classList.remove('rolling'), ms + 20));
   });
+  // 야추면 주사위가 모두 멈춘 뒤에 축하한다.
+  if (yacht) rollAnim.timers.push(setTimeout(() => celebrateYacht(yacht), longest + 60));
+}
+
+function isYacht(dice) {
+  return dice.length === 5 && dice[0] > 0 && dice.every((d) => d === dice[0]);
+}
+
+/* 야추 축하: 주사위가 차례로 튀어 오르고, 트레이에 "야추!"가 찍히고, 신호기 깃발이 흩날린다. */
+let yachtTimer = null;
+function celebrateYacht(who) {
+  const tray = $('tray');
+  tray.querySelector('.yacht-stamp')?.remove();
+  clearTimeout(yachtTimer);
+  diceButtons.forEach((b, i) => b.style.setProperty('--hop-delay', `${i * 70}ms`));
+  tray.classList.remove('yacht');
+  void tray.offsetWidth;
+  tray.classList.add('yacht');
+
+  const stamp = el('div', 'yacht-stamp');
+  stamp.setAttribute('role', 'status');
+  if (who && !who.me) stamp.append(el('small', '', who.name));
+  stamp.append(el('span', '', '야추!'));
+  tray.append(stamp);
+
+  if (!reducedMotion.matches) {
+    const box = el('div', 'confetti');
+    box.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 40; i++) {
+      const piece = el('i', `pen c${i % 4}`);
+      piece.style.left = `${Math.random() * 100}%`;
+      piece.style.setProperty('--fall-delay', `${Math.floor(Math.random() * 350)}ms`);
+      piece.style.setProperty('--fall-ms', `${1400 + Math.floor(Math.random() * 900)}ms`);
+      piece.style.setProperty('--drift', `${Math.round((Math.random() - 0.5) * 180)}px`);
+      piece.style.setProperty('--turn', `${(Math.random() < 0.5 ? -1 : 1) * (240 + Math.floor(Math.random() * 480))}deg`);
+      box.append(piece);
+    }
+    document.body.append(box);
+    setTimeout(() => box.remove(), 2800);
+    if (who?.me) navigator.vibrate?.([40, 60, 90]);
+  }
+
+  yachtTimer = setTimeout(() => {
+    stamp.remove();
+    tray.classList.remove('yacht');
+  }, 2100);
 }
 
 function tdClass(c) {
@@ -453,7 +506,9 @@ function renderSheet(m, rolling = false) {
         td.append(cell);
       } else if (m.previewCol === i && m.canScore && !rolling) {
         const s = scoreFor(cat, m.dice);
-        const b = el('button', `cell preview${s === 0 ? ' zero' : ''}${ui.armed === cat ? ' armed' : ''}`, String(s));
+        // 아직 적지 않은 '적을 수 있는 점수'는 점선 테두리 안에 보여 준다.
+        const b = el('button', `cell preview${s === 0 ? ' zero' : ''}${ui.armed === cat ? ' armed' : ''}`);
+        b.append(el('span', 'pv', String(s)));
         b.type = 'button';
         b.dataset.cat = cat;
         b.setAttribute('aria-label', `${CATEGORY_INFO[cat].name}에 ${s}점 적기`);
