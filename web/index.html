@@ -42,6 +42,9 @@
       <div class="home-actions">
         <button class="btn btn-primary btn-big" data-go="solo">혼자 하기</button>
         <button class="btn btn-secondary btn-big" data-go="online">같이 하기</button>
+        <button class="btn btn-ghost" data-go="ranking">
+          <i class="pen c2" aria-hidden="true"></i>랭킹 보기
+        </button>
       </div>
       <p class="home-best" id="home-best"></p>
       <button class="link" id="solo-new" hidden>혼자 하기 처음부터 새로 하기</button>
@@ -90,6 +93,26 @@
         </div>
       </section>
       <p class="form-error" id="online-error" role="alert"></p>
+    </div>
+  </main>
+
+  <!-- 랭킹 -->
+  <main id="ranking" class="screen panel-screen" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-go="home" aria-label="처음으로">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h2>혼자 하기 랭킹</h2>
+    </header>
+    <div class="panel">
+      <div class="tabs" role="tablist" aria-label="랭킹 기간">
+        <button role="tab" id="tab-week" data-period="week" aria-selected="true">이번 주</button>
+        <button role="tab" id="tab-all" data-period="all" aria-selected="false">전체</button>
+      </div>
+      <p class="rank-range" id="rank-range"></p>
+      <ol class="rank-list" id="rank-list" aria-live="polite"></ol>
+      <div class="rank-empty" id="rank-empty" hidden></div>
+      <button class="btn btn-primary wide" data-go="solo">혼자 하기</button>
     </div>
   </main>
 
@@ -156,6 +179,7 @@
     <div class="sheet-card result-card" role="dialog" aria-modal="true" aria-labelledby="result-title">
       <h2 id="result-title"></h2>
       <div class="result-sub" id="result-sub"></div>
+      <div id="result-extra"></div>
       <ol class="standings" id="standings"></ol>
       <div class="result-actions" id="result-actions"></div>
       <p class="result-note" id="result-note"></p>

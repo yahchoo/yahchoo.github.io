@@ -21,6 +21,22 @@
 | L. 스트레이트 | 이어지는 눈 5개면 30점 |
 | 야추 | 5개가 모두 같으면 50점 |
 
+## 혼자 하기와 랭킹
+
+- 주사위는 서버가 굴림 (기기에서 점수를 조작할 수 없게). 새로고침하거나 다시 들어와도 하던 판을 이어서 함
+- 서버에 연결할 수 없으면 기기에서 굴리는 오프라인 판으로 진행 (랭킹 등록 불가)
+- 12칸을 다 채우면 영문 이니셜 3글자로 랭킹 등록. 판마다 한 번, 끝낸 뒤 24시간 안
+- 랭킹은 **이번 주**(한국 시간 월요일 0시 시작)와 **전체** 두 가지, 점수가 같으면 같은 순위
+
+| API | 설명 |
+| --- | --- |
+| `POST /api/solo/start` | 새 판 → 게임 상태 |
+| `GET /api/solo/{gameId}` | 하던 판 불러오기 |
+| `POST /api/solo/roll` | `{gameId, held: [bool×5]}` 굴리기 |
+| `POST /api/solo/score` | `{gameId, category}` 칸에 적기 |
+| `POST /api/rankings` | `{gameId, initials}` 랭킹 등록 → 이번 주·전체 순위 |
+| `GET /api/rankings?period=week\|all` | 랭킹 목록 (최대 50개) |
+
 ## 같이 하기
 
 - 방 만들기에서 방식(1:1, 1:1:1, 2:2)을 고르면 4글자 방 코드가 나옴. 코드나 초대 링크(`?room=CODE`)로 입장
@@ -51,6 +67,8 @@ web/                 # 정적 웹 (빌드 과정 없음)
   js/config.js       # 서버 주소 (배포 때 자동으로 채워짐)
 worker/              # Cloudflare Worker
   src/match.ts       # 방 규칙 (순수 로직, 단위 테스트)
+  src/solo.ts        # 혼자 하기(서버 굴림)·이니셜·주간 기준 (순수 로직)
+  migrations/        # D1 테이블 (solo_games, rankings)
   src/room.ts        # Durable Object: 연결·저장·타이머
   src/index.ts       # 라우팅, CORS
   test/              # vitest
@@ -59,14 +77,14 @@ worker/              # Cloudflare Worker
 ## 처음 한 번 설정
 
 1. **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로
-2. Cloudflare 대시보드 → **My Profile → API Tokens → Create Token** → **Edit Cloudflare Workers** 템플릿
+2. Cloudflare 대시보드 → **My Profile → API Tokens → Create Token** → **Edit Cloudflare Workers** 템플릿에 **Account · D1 · Edit** 권한 추가 (랭킹 데이터베이스용)
 3. Cloudflare 대시보드 **Workers & Pages** 화면의 **Account ID** 복사
 4. GitHub **Settings → Secrets and variables → Actions**에 시크릿 추가
    - `CLOUDFLARE_API_TOKEN`: 2번 토큰
    - `CLOUDFLARE_ACCOUNT_ID`: 3번 ID
 5. `main`에 푸시하거나 **Actions → CI & Deploy → Run workflow**
 
-Worker 이름은 `yacht-dice-api`라서 다른 프로젝트와 같은 Cloudflare 계정을 써도 겹치지 않습니다. 시크릿이 없으면 서버 배포는 건너뛰고 웹은 혼자 하기만 되는 상태로 배포됩니다. 서버 주소를 직접 정하려면 저장소 변수 `API_BASE_URL`을 넣으세요.
+배포할 때 D1 데이터베이스(`yacht-dice`)를 찾거나 만들고 테이블을 준비하는 것까지 자동으로 합니다. Worker 이름은 `yacht-dice-api`라서 다른 프로젝트와 같은 Cloudflare 계정을 써도 겹치지 않습니다. 시크릿이 없으면 서버 배포는 건너뛰고 웹은 혼자 하기만 되는 상태로 배포됩니다. 서버 주소를 직접 정하려면 저장소 변수 `API_BASE_URL`을 넣으세요.
 
 웹 주소가 바뀌면(저장소 이름 변경, 커스텀 도메인) `worker/wrangler.toml`의 `ALLOWED_ORIGINS`에 새 주소를 추가해야 같이 하기가 연결됩니다.
 
@@ -74,7 +92,7 @@ Worker 이름은 `yacht-dice-api`라서 다른 프로젝트와 같은 Cloudflare
 
 ```bash
 cd worker && npm install
-npm run dev                 # 서버: http://127.0.0.1:8787
+npm run dev                 # 로컬 D1 테이블 준비 + 서버: http://127.0.0.1:8787
 npm test                    # 규칙·방 로직 테스트
 
 # 다른 터미널에서

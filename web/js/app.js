@@ -12,7 +12,7 @@ import {
   upperSubtotal,
 } from './rules.js';
 import { makeDie, paintDie } from './dice.js';
-import { SoloGame, bestScore } from './solo.js';
+import { bestScore, clearSoloSaves, fetchRankings, hasSoloInProgress, myRankingIds, openSolo, savedInitials, submitRanking } from './solo.js';
 import { RoomConnection, activeRoom, apiBase, createRoom } from './net.js';
 
 const $ = (id) => document.getElementById(id);
@@ -23,7 +23,7 @@ const NICK_KEY = 'yacht.nick';
 /* ---------------------------------------------------------------- 공통 */
 
 function show(screen) {
-  for (const id of ['home', 'online', 'lobby', 'game']) $(id).hidden = id !== screen;
+  for (const id of ['home', 'online', 'lobby', 'game', 'ranking']) $(id).hidden = id !== screen;
   window.scrollTo(0, 0);
 }
 
@@ -124,18 +124,10 @@ function showHome() {
 
 $('solo-new').addEventListener('click', () => {
   confirmExit('하던 게임을 버리고 처음부터 새로 할까요? 지금까지 적은 점수는 사라져요.', () => {
-    new SoloGame().reset();
+    clearSoloSaves();
     startSolo();
   }, '새로 하기');
 });
-
-function hasSoloInProgress() {
-  try {
-    return !!localStorage.getItem('yacht.solo.current');
-  } catch {
-    return false;
-  }
-}
 
 let homeDiceDone = false;
 function paintHomeDice() {
@@ -159,6 +151,7 @@ for (const btn of document.querySelectorAll('[data-go]')) {
     if (to === 'home') showHome();
     else if (to === 'solo') startSolo();
     else if (to === 'online') showOnline();
+    else if (to === 'ranking') showRanking();
   });
 }
 
@@ -216,13 +209,7 @@ $('game-restart').addEventListener('click', () => {
   if (ui.kind !== 'solo' || !solo) return;
   const restart = () => {
     closeOverlay('result');
-    stopRolling();
-    solo.reset();
-    soloResult = null;
-    ui.armed = null;
-    ui.lastRollSeq = null;
-    renderSolo();
-    $('roll-btn').focus();
+    startSolo({ fresh: true });
   };
   const started = filledCount(solo.sheet) > 0 || solo.rollsLeft < ROLLS_PER_TURN;
   if (started && !solo.done) {
@@ -248,8 +235,7 @@ function onRoll() {
   if (!ui.model?.canRoll || isRolling()) return;
   ui.armed = null;
   if (ui.kind === 'solo') {
-    solo.roll();
-    renderSolo();
+    soloAction(() => solo.roll());
   } else {
     room.conn?.send({ type: 'roll' });
   }
@@ -280,12 +266,10 @@ function onPick(cat) {
   }
   ui.armed = null;
   if (ui.kind === 'solo') {
-    const result = solo.score(cat);
-    renderSolo();
-    if (result) {
-      soloResult = result;
-      showResult(true);
-    }
+    soloAction(async () => {
+      const result = await solo.score(cat);
+      if (result) soloResult = result;
+    });
   } else {
     room.conn?.send({ type: 'score', category: cat });
   }
@@ -598,17 +582,56 @@ function leaveGameState() {
 let solo = null;
 let soloResult = null;
 
-function startSolo() {
+let soloBusy = false;
+let soloOpening = 0;
+
+/** 혼자 하기 시작. 하던 게임이 있으면 이어서 한다. fresh면 처음부터. */
+async function startSolo({ fresh = false } = {}) {
   leaveGameState();
   ui.kind = 'solo';
-  solo = new SoloGame();
+  solo = null;
   soloResult = null;
+  soloBusy = true;
   show('game');
+  $('sheet').replaceChildren();
+  diceButtons.forEach((b) => { paintDie(b, 0); b.disabled = true; b.classList.remove('held'); });
+  $('roll-label').textContent = '준비하는 중';
+  $('roll-btn').disabled = true;
+  $('tray-hint').textContent = '';
+  $('turn-label').replaceChildren();
+  $('game-restart').hidden = false;
+
+  const ticket = ++soloOpening;
+  const { game, offlineReason } = await openSolo({ fresh });
+  if (ticket !== soloOpening || ui.kind !== 'solo') return; // 그 사이 다른 화면으로 감
+  solo = game;
+  soloBusy = false;
   renderSolo();
+  if (offlineReason) toast(offlineReason);
   $('roll-btn').focus();
 }
 
+/** 굴리기·적기처럼 서버를 거치는 동작. 기다리는 동안 다른 입력을 막는다. */
+async function soloAction(fn) {
+  if (!solo || soloBusy) return;
+  soloBusy = true;
+  renderSolo();
+  try {
+    await fn();
+  } catch (err) {
+    toast(err.message ?? '잠시 후 다시 시도해 주세요');
+  } finally {
+    soloBusy = false;
+  }
+  if (ui.kind !== 'solo') return;
+  renderSolo();
+  if (soloResult && solo.done) showResult(true);
+}
+
 function renderSolo() {
+  if (!solo) return;
+  const ready = !solo.done && !soloBusy;
+  const best = bestScore();
   const m = {
     round: solo.round,
     turn: solo.done ? null : { name: '나', cls: 'c0', me: true },
@@ -617,16 +640,16 @@ function renderSolo() {
     held: solo.held,
     rollsLeft: solo.rollsLeft,
     rollSeq: solo.rollSeq,
-    canRoll: !solo.done && solo.rollsLeft > 0,
-    canHold: !solo.done && solo.rollsLeft > 0 && solo.rollsLeft < ROLLS_PER_TURN,
-    canScore: !solo.done && solo.rollsLeft < ROLLS_PER_TURN,
+    canRoll: ready && solo.rollsLeft > 0,
+    canHold: ready && solo.rollsLeft > 0 && solo.rollsLeft < ROLLS_PER_TURN,
+    canScore: ready && solo.rollsLeft < ROLLS_PER_TURN,
     finished: solo.done,
     previewCol: 0,
     teams: null,
     columns: [{
       name: '나',
       cls: 'c0',
-      status: bestScore() === null ? '' : `최고 ${bestScore()}`,
+      status: solo.online ? (best === null ? '' : `최고 ${best}`) : '오프라인',
       scores: solo.sheet,
       upper: upperSubtotal(solo.sheet),
       bonus: bonusFor(solo.sheet),
@@ -637,6 +660,138 @@ function renderSolo() {
   };
   renderGame(m);
   solo.lastScored = null;
+}
+
+/* ---------------------------------------------------------------- 랭킹 등록 (결과 화면) */
+
+function renderRankForm(box) {
+  if (!solo?.online) return;
+  if (solo.registered) {
+    const e = solo.registered;
+    const done = el('div', 'rank-done');
+    done.append(el('strong', '', e.initials));
+    done.append(el('span', '', `${e.rankWeek ? `이번 주 ${e.rankWeek}위, ` : ''}전체 ${e.rankAll}위로 등록했어요`));
+    const b = el('button', 'btn btn-secondary wide', '랭킹 보기');
+    b.type = 'button';
+    b.addEventListener('click', () => showRanking('week', e.id));
+    box.append(done, b);
+    return;
+  }
+  if (!solo.rankable) return;
+
+  const form = el('form', 'rank-form');
+  form.noValidate = true;
+  const label = el('label', '', '랭킹에 이니셜 남기기');
+  label.htmlFor = 'initials';
+  const row = el('div', 'row');
+  const input = el('input');
+  Object.assign(input, { id: 'initials', maxLength: 3, size: 3, value: savedInitials(), placeholder: 'ABC', autocomplete: 'off', spellcheck: false });
+  input.setAttribute('autocapitalize', 'characters');
+  input.setAttribute('aria-describedby', 'initials-help');
+  const submit = el('button', 'btn btn-primary', '등록');
+  submit.type = 'submit';
+  row.append(input, submit);
+  const err = el('p', 'err');
+  err.setAttribute('role', 'alert');
+  const help = el('small', '', '영문 3글자. 끝낸 뒤 24시간 안에 등록할 수 있어요.');
+  help.id = 'initials-help';
+  form.append(label, row, err, help);
+  box.append(form);
+
+  input.addEventListener('input', () => {
+    input.value = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+    err.textContent = '';
+  });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const initials = input.value;
+    if (!/^[A-Z]{3}$/.test(initials)) {
+      err.textContent = '영문 3글자를 입력해 주세요';
+      input.focus();
+      return;
+    }
+    submit.disabled = true;
+    submit.textContent = '등록 중';
+    try {
+      solo.registered = await submitRanking(solo.gameId, initials);
+      solo.rankable = false;
+      showResult(false);
+    } catch (e) {
+      err.textContent = e.message;
+      submit.disabled = false;
+      submit.textContent = '등록';
+    }
+  });
+}
+
+/* ---------------------------------------------------------------- 랭킹 화면 */
+
+let rankingPeriod = 'week';
+let rankingFocus = null;
+let rankingTicket = 0;
+
+function showRanking(period = rankingPeriod, focusId = null) {
+  leaveGameState();
+  setUrlRoom(null);
+  rankingFocus = focusId;
+  show('ranking');
+  loadRanking(period);
+}
+
+for (const tab of document.querySelectorAll('#ranking [role="tab"]')) {
+  tab.addEventListener('click', () => loadRanking(tab.dataset.period));
+}
+
+const shortDate = (ms) => new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' }).format(ms);
+const dayName = (ms) => new Intl.DateTimeFormat('ko-KR', { weekday: 'short', timeZone: 'Asia/Seoul' }).format(ms);
+
+async function loadRanking(period) {
+  rankingPeriod = period;
+  for (const tab of document.querySelectorAll('#ranking [role="tab"]')) {
+    tab.setAttribute('aria-selected', String(tab.dataset.period === period));
+  }
+  const list = $('rank-list');
+  const empty = $('rank-empty');
+  const range = $('rank-range');
+  list.replaceChildren();
+  empty.hidden = false;
+  empty.textContent = '불러오는 중…';
+  range.textContent = period === 'all' ? '지금까지의 최고 점수 순위예요' : '';
+
+  const ticket = ++rankingTicket;
+  let data;
+  try {
+    data = await fetchRankings(period);
+  } catch (err) {
+    if (ticket !== rankingTicket) return;
+    empty.textContent = `랭킹을 불러오지 못했어요. ${err.message}`;
+    return;
+  }
+  if (ticket !== rankingTicket) return;
+
+  if (period === 'week') {
+    const end = data.weekEnd - 1;
+    range.textContent = `${shortDate(data.weekStart)}(${dayName(data.weekStart)}) ~ ${shortDate(end)}(${dayName(end)})\n매주 월요일 0시에 새로 시작해요`;
+  }
+  if (!data.entries.length) {
+    empty.textContent = period === 'week' ? '이번 주 기록이 아직 없어요. 첫 번째 기록을 남겨 보세요.' : '아직 등록된 기록이 없어요.';
+    return;
+  }
+  empty.hidden = true;
+  const mine = new Set(myRankingIds());
+  for (const e of data.entries) {
+    const li = el('li');
+    if (mine.has(e.id)) li.classList.add('mine');
+    if (e.id === rankingFocus) li.classList.add('focus');
+    const rk = el('span', 'rk');
+    if (e.rank <= 3) rk.append(el('span', `medal m${e.rank}`, String(e.rank)));
+    else rk.textContent = String(e.rank);
+    const ini = el('span', 'ini', e.initials);
+    if (mine.has(e.id)) ini.append(el('span', 'tag me', '나'));
+    li.append(rk, ini, el('span', 'dt', shortDate(e.playedAt)), el('span', 'sc', String(e.score)));
+    list.append(li);
+  }
+  list.querySelector('li.focus')?.scrollIntoView({ block: 'center' });
 }
 
 /* ---------------------------------------------------------------- 같이 하기: 방 만들기 / 들어가기 */
@@ -1036,6 +1191,8 @@ function showResult(open) {
     return b;
   };
   const viewSheet = () => closeOverlay('result');
+  const extra = $('result-extra');
+  extra.replaceChildren();
 
   if (ui.kind === 'solo') {
     const total = solo.total;
@@ -1045,16 +1202,17 @@ function showResult(open) {
       el('div', 'big-score', `${total}`),
       el('div', '', soloResult?.newBest ? '새 최고 기록이에요' : `최고 기록 ${best ?? total}점`),
     );
-    $('result-note').textContent = '';
+    $('result-note').textContent = solo.online ? '' : '오프라인으로 한 판이라 랭킹에 올릴 수 없어요';
+    renderRankForm(extra);
     actionBtn('점수판 보기', 'btn-ghost', viewSheet);
     actionBtn('한 판 더', 'btn-primary', () => {
       closeOverlay('result');
-      solo.reset();
-      soloResult = null;
-      ui.lastRollSeq = null;
-      renderSolo();
+      startSolo({ fresh: true });
     });
-    if (open) openOverlay('result');
+    if (open) {
+      openOverlay('result');
+      $('initials')?.focus();
+    }
     return;
   }
 

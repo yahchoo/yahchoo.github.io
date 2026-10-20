@@ -130,6 +130,8 @@ h1, h2, h3 { margin: 0; font-weight: 400; font-family: var(--display); letter-sp
 .home-dice .die { --size: clamp(44px, 13vw, 58px); }
 .home-lead { color: var(--ink-soft); margin: 0 auto 24px; max-width: 30ch; }
 .home-actions { display: grid; gap: 12px; }
+.home-actions .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.home-actions .btn-ghost .pen { width: 18px; height: 12px; }
 .home-inner .link { display: block; margin: 0 auto; }
 .home-best { min-height: 1.5em; margin: 18px 0 4px; color: var(--ink-soft); font-size: 14px; }
 
@@ -447,6 +449,7 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
   position: fixed; inset: 0; z-index: 20;
   background: rgba(10, 18, 40, .6);
   display: grid; place-items: center;
+  grid-template-columns: minmax(0, 1fr); /* 안의 내용이 창보다 넓어지지 않게 */
   padding: 16px;
   overflow-y: auto;
 }
@@ -469,6 +472,50 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
 .standings .nm small { font-weight: 400; color: var(--ink-soft); margin-left: 6px; }
 .standings .sc { font-family: var(--display); font-size: 26px; }
 .result-actions { display: flex; gap: 8px; margin-top: 20px; }
+/* 결과: 랭킹 등록 */
+.rank-form { margin: 4px 0 6px; padding: 16px; border-radius: var(--radius-m); background: var(--sail); }
+.rank-form label { display: block; font-weight: 700; margin-bottom: 10px; }
+.rank-form .row { display: flex; gap: 8px; }
+.rank-form input {
+  flex: 1; min-width: 0; width: 100%; min-height: 52px;
+  border: 2px solid var(--line); border-radius: var(--radius-s); background: var(--paper);
+  font-family: var(--display); font-size: 30px; letter-spacing: .4em; text-align: center; text-transform: uppercase;
+  padding: 4px 0 4px .4em;
+}
+.rank-form input:focus { outline: none; border-color: var(--navy); }
+.rank-form .btn { min-width: 84px; }
+.rank-form .err { color: var(--signal-red); font-size: 14px; margin: 8px 0 0; min-height: 1.3em; }
+.rank-form .err:empty { display: none; }
+.rank-form small { display: block; color: var(--ink-soft); font-size: 13px; margin-top: 8px; }
+.rank-done { margin: 4px 0 12px; padding: 14px 16px; border-radius: var(--radius-m); background: color-mix(in srgb, var(--signal-yellow) 26%, var(--paper)); text-align: center; }
+.rank-done strong { font-family: var(--display); font-weight: 400; font-size: 26px; letter-spacing: .12em; display: block; }
+
+/* 랭킹 화면 */
+.tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
+.tabs button { border: 0; background: none; border-radius: 999px; min-height: 42px; font-weight: 700; color: var(--ink-soft); }
+.tabs button[aria-selected="true"] { background: var(--navy); color: #fff; }
+.rank-range { color: var(--ink-soft); font-size: 14px; text-align: center; margin: 12px 0 14px; min-height: 1.5em; white-space: pre-line; }
+.rank-list { list-style: none; margin: 0 0 20px; padding: 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-m); overflow: hidden; }
+.rank-list:empty { display: none; }
+.rank-list li {
+  display: grid; grid-template-columns: 44px 1fr auto auto; align-items: center; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+}
+.rank-list li:last-child { border-bottom: 0; }
+.rank-list .rk { font-family: var(--display); font-size: 24px; text-align: center; }
+.rank-list li:nth-child(-n + 3) .rk { color: var(--navy); }
+.rank-list .medal { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #13234a; font-size: 20px; }
+.rank-list .m1 { background: var(--signal-yellow); }
+.rank-list .m2 { background: #cfd6e2; }
+.rank-list .m3 { background: #e7b98f; }
+.rank-list .ini { font-family: var(--display); font-size: 26px; letter-spacing: .14em; display: flex; align-items: center; gap: 8px; }
+.rank-list .ini .tag { font-family: var(--body); letter-spacing: 0; }
+.rank-list .dt { color: var(--ink-soft); font-size: 13px; }
+.rank-list .sc { font-family: var(--display); font-size: 26px; min-width: 3ch; text-align: right; }
+.rank-list li.mine { background: color-mix(in srgb, var(--signal-yellow) 18%, var(--paper)); }
+.rank-list li.focus { box-shadow: inset 4px 0 0 var(--signal-yellow); }
+.rank-empty { text-align: center; color: var(--ink-soft); padding: 36px 16px; margin-bottom: 20px; background: var(--paper); border: 1px dashed var(--line); border-radius: var(--radius-m); }
+
 .result-note { margin: 12px 0 0; text-align: center; color: var(--ink-soft); font-size: 14px; }
 .result-note:empty { display: none; }
 .result-actions .btn { flex: 1; }
