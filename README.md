@@ -2,7 +2,7 @@
 
 주사위 5개로 족보를 맞추는 야추(Yacht) 게임. 혼자 하기와 온라인 같이 하기(1:1, 1:1:1, 2:2)를 지원합니다.
 
-- 웹: GitHub Pages (`web/`)
+- 웹: https://yahchoo.github.io (GitHub Pages, `web/`)
 - 같이 하기 서버: Cloudflare Workers + Durable Objects (`worker/`)
 
 ## 규칙 (세계의 아소비 대전 51 기준)
