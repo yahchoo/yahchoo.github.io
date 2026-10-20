@@ -501,6 +501,7 @@ function renderSheet(m, rolling = false) {
       const td = el('td', tdClass(c));
       const value = c.scores[cat];
       if (value !== undefined) {
+        td.classList.add('filled'); // 기록한 칸은 배경색으로 구분
         const cell = el('div', 'cell', String(value));
         if (c.just === cat) cell.classList.add('just');
         td.append(cell);
