@@ -109,29 +109,26 @@ h1, h2, h3 { margin: 0; font-weight: 400; font-family: var(--display); letter-sp
 .t0 { --pc: var(--t0); } .t1 { --pc: var(--t1); }
 
 /* ---------- 홈 ---------- */
-.home {
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 32px 16px;
-  background:
-    linear-gradient(var(--navy), var(--navy)) top / 100% 46% no-repeat,
-    var(--sail);
+.home { min-height: 100dvh; display: flex; flex-direction: column; }
+.home-hero {
+  background: var(--navy);
+  padding: max(56px, 14vh) 16px 36px;
+  text-align: center;
 }
-.home-inner { width: min(440px, 100%); text-align: center; }
+.home-inner { width: min(440px, 100%); margin: 0 auto; padding: 24px 16px 40px; text-align: center; }
 .logo {
   font-size: clamp(96px, 30vw, 148px);
   line-height: .9;
   color: #fff;
-  margin-top: 4px;
 }
 .home-dice {
   display: flex; justify-content: center; gap: 10px;
-  margin: 28px 0 32px;
+  margin-top: 28px;
 }
 .home-dice .die { --size: clamp(44px, 13vw, 58px); }
 .home-lead { color: var(--ink-soft); margin: 0 auto 24px; max-width: 30ch; }
 .home-actions { display: grid; gap: 12px; }
+.home-inner .link { display: block; margin: 0 auto; }
 .home-best { min-height: 1.5em; margin: 18px 0 4px; color: var(--ink-soft); font-size: 14px; }
 
 /* ---------- 패널 화면 (같이 하기, 대기실) ---------- */
@@ -245,6 +242,7 @@ h1, h2, h3 { margin: 0; font-weight: 400; font-family: var(--display); letter-sp
   border-radius: var(--radius-m);
   padding: 26px 12px 16px;
   box-shadow: inset 0 0 0 6px var(--navy-deep);
+  overflow: hidden; /* 굴러 들어오는 주사위가 트레이 밖으로 나가지 않게 */
 }
 .dice { display: flex; justify-content: center; gap: clamp(6px, 2.4vw, 12px); }
 .tray-hint { color: rgba(255, 255, 255, .72); text-align: center; font-size: 14px; margin: 34px 0 0; min-height: 1.55em; }
@@ -276,7 +274,27 @@ button.die:disabled { cursor: default; }
   position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
   font-size: 12px; font-weight: 700; color: var(--signal-yellow); white-space: nowrap;
 }
-.die.rolling { animation: tumble .5s cubic-bezier(.3, .7, .4, 1); }
+/* 굴리기: 왼쪽 위에서 굴러 들어와 두세 번 튀고 멈춘다. 방향·회전·길이는 주사위마다 JS가 정한다. */
+.die.rolling {
+  animation: roll var(--roll-ms, 760ms) cubic-bezier(.22, .61, .36, 1) both;
+  box-shadow: inset 0 -4px 0 rgba(27, 47, 91, .16), 0 10px 14px rgba(0, 0, 0, .28);
+}
+@keyframes roll {
+  0% { transform: translate(var(--from-x, -60px), -20px) rotate(var(--spin, -540deg)) scale(.82); }
+  30% { transform: translate(calc(var(--from-x, -60px) * .45), 0) rotate(calc(var(--spin, -540deg) * .5)) scale(1.05, .92); }
+  46% { transform: translate(calc(var(--from-x, -60px) * .25), -16px) rotate(calc(var(--spin, -540deg) * .26)); }
+  62% { transform: translate(calc(var(--from-x, -60px) * .1), 0) rotate(calc(var(--spin, -540deg) * .1)) scale(1.04, .95); }
+  76% { transform: translate(0, -5px) rotate(calc(var(--spin, -540deg) * .02)); }
+  88% { transform: translate(0, 0) scale(1.02, .98); }
+  100% { transform: none; }
+}
+.tray.landing { animation: thud .76s ease-out; }
+@keyframes thud {
+  0%, 25% { transform: none; }
+  32% { transform: translateY(2px); }
+  40%, 100% { transform: none; }
+}
+.home-dice .die.rolling { animation-name: tumble; }
 @keyframes tumble {
   0% { transform: translateY(-18px) rotate(-30deg) scale(.86); }
   45% { transform: translateY(4px) rotate(14deg) scale(1.04); }

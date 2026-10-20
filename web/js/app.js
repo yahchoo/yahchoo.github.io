@@ -68,8 +68,9 @@ function toast(text) {
 }
 
 let confirmAction = null;
-function confirmExit(text, action) {
+function confirmExit(text, action, okText = '나가기') {
   $('confirm-text').textContent = text;
+  $('confirm-ok').textContent = okText;
   confirmAction = action;
   openOverlay('confirm');
 }
@@ -116,8 +117,17 @@ function showHome() {
   const best = bestScore();
   $('home-best').textContent = best === null ? '' : `혼자 하기 최고 기록 ${best}점`;
   const soloBtn = document.querySelector('[data-go="solo"]');
-  soloBtn.textContent = hasSoloInProgress() ? '혼자 하기 이어서' : '혼자 하기';
+  const inProgress = hasSoloInProgress();
+  soloBtn.textContent = inProgress ? '혼자 하기 이어서' : '혼자 하기';
+  $('solo-new').hidden = !inProgress;
 }
+
+$('solo-new').addEventListener('click', () => {
+  confirmExit('하던 게임을 버리고 처음부터 새로 할까요? 지금까지 적은 점수는 사라져요.', () => {
+    new SoloGame().reset();
+    startSolo();
+  }, '새로 하기');
+});
 
 function hasSoloInProgress() {
   try {
@@ -202,6 +212,26 @@ $('game-exit').addEventListener('click', () => {
   }
 });
 
+$('game-restart').addEventListener('click', () => {
+  if (ui.kind !== 'solo' || !solo) return;
+  const restart = () => {
+    closeOverlay('result');
+    stopRolling();
+    solo.reset();
+    soloResult = null;
+    ui.armed = null;
+    ui.lastRollSeq = null;
+    renderSolo();
+    $('roll-btn').focus();
+  };
+  const started = filledCount(solo.sheet) > 0 || solo.rollsLeft < ROLLS_PER_TURN;
+  if (started && !solo.done) {
+    confirmExit('지금 게임을 그만두고 처음부터 다시 할까요? 지금까지 적은 점수는 사라져요.', restart, '다시 하기');
+  } else {
+    restart();
+  }
+});
+
 document.addEventListener('keydown', (ev) => {
   if ($('game').hidden || ev.target.closest('input') || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   if (document.querySelector('.overlay:not([hidden])')) return;
@@ -215,7 +245,7 @@ document.addEventListener('keydown', (ev) => {
 });
 
 function onRoll() {
-  if (!ui.model?.canRoll) return;
+  if (!ui.model?.canRoll || isRolling()) return;
   ui.armed = null;
   if (ui.kind === 'solo') {
     solo.roll();
@@ -226,7 +256,7 @@ function onRoll() {
 }
 
 function onHold(i) {
-  if (!ui.model?.canHold) return;
+  if (!ui.model?.canHold || isRolling()) return;
   ui.armed = null;
   if (ui.kind === 'solo') {
     solo.toggleHold(i);
@@ -242,7 +272,7 @@ function onHold(i) {
 
 function onPick(cat) {
   const m = ui.model;
-  if (!m?.canScore) return;
+  if (!m?.canScore || isRolling()) return;
   if (ui.armed !== cat) {
     ui.armed = cat;
     renderGame(m);
@@ -268,6 +298,7 @@ function onPick(cat) {
  */
 function renderGame(m) {
   ui.model = m;
+  $('game-restart').hidden = ui.kind !== 'solo';
   $('round-now').textContent = String(m.round);
 
   // 차례 표시
@@ -281,22 +312,20 @@ function renderGame(m) {
 
   // 주사위
   const rolled = ui.lastRollSeq !== null && m.rollSeq > ui.lastRollSeq;
-  diceButtons.forEach((b, i) => {
-    paintDie(b, m.dice[i] ?? 0);
-    b.classList.toggle('held', !!m.held[i] && m.rollsLeft < ROLLS_PER_TURN);
-    b.disabled = !m.canHold;
-    b.setAttribute('aria-pressed', String(!!m.held[i]));
-    if (rolled && !m.held[i]) {
-      b.classList.remove('rolling');
-      void b.offsetWidth; // 애니메이션 다시 시작
-      b.classList.add('rolling');
-    }
-  });
   ui.lastRollSeq = m.rollSeq;
+  if (rolled) startRolling(m);
+  const rolling = isRolling();
+  diceButtons.forEach((b, i) => {
+    if (!rollAnim.dice.has(i)) paintDie(b, m.dice[i] ?? 0);
+    b.classList.toggle('held', !!m.held[i] && m.rollsLeft < ROLLS_PER_TURN);
+    b.disabled = !m.canHold || rolling;
+    b.setAttribute('aria-pressed', String(!!m.held[i]));
+  });
 
   // 안내 문구
   let hint = '';
-  if (m.finished) hint = '게임이 끝났어요';
+  if (rolling) hint = '데구르르…';
+  else if (m.finished) hint = '게임이 끝났어요';
   else if (!m.turn?.me) hint = m.waitingText ?? '';
   else if (ui.armed) hint = `한 번 더 누르면 ${CATEGORY_INFO[ui.armed].name}에 ${scoreFor(ui.armed, m.dice)}점을 적어요`;
   else if (m.rollsLeft === ROLLS_PER_TURN) hint = '주사위를 굴려서 시작해요';
@@ -307,7 +336,7 @@ function renderGame(m) {
   // 굴리기 버튼
   const btn = $('roll-btn');
   const label = $('roll-label');
-  btn.disabled = !(m.canRoll || m.finished);
+  btn.disabled = rolling || !(m.canRoll || m.finished);
   if (m.finished) label.textContent = '결과 보기';
   else if (!m.turn?.me) label.textContent = '기다리는 중';
   else if (m.rollsLeft === ROLLS_PER_TURN) label.textContent = '굴리기';
@@ -318,15 +347,76 @@ function renderGame(m) {
     pip.classList.toggle('used', i < ROLLS_PER_TURN - m.rollsLeft);
   });
 
-  renderSheet(m);
+  renderSheet(m, rolling);
   updateTimer();
+}
+
+/* 굴리는 애니메이션: 고정 안 한 주사위가 굴러 들어오면서 눈이 바뀌다가 하나씩 멈춘다. */
+const rollAnim = { dice: new Set(), timers: [], until: 0 };
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+function isRolling() {
+  return rollAnim.dice.size > 0;
+}
+
+function stopRolling() {
+  for (const t of rollAnim.timers) clearTimeout(t);
+  rollAnim.timers = [];
+  rollAnim.dice.clear();
+  for (const b of diceButtons) b.classList.remove('rolling');
+  $('tray').classList.remove('landing');
+}
+
+function startRolling(m) {
+  stopRolling();
+  const moving = diceButtons.map((_, i) => i).filter((i) => !(m.held[i] && m.rollsLeft < ROLLS_PER_TURN - 1));
+  // 시간 초과로 대신 굴리고 바로 다음 차례로 넘어간 경우는 보여줄 주사위가 없다.
+  if (reducedMotion.matches || moving.length === 0 || m.rollsLeft === ROLLS_PER_TURN) return;
+
+  const tray = $('tray');
+  void tray.offsetWidth;
+  tray.classList.add('landing');
+
+  moving.forEach((i, order) => {
+    const b = diceButtons[i];
+    rollAnim.dice.add(i);
+    const ms = 620 + order * 90 + Math.floor(Math.random() * 80);
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    b.style.setProperty('--roll-ms', `${ms}ms`);
+    b.style.setProperty('--from-x', `${-(40 + Math.random() * 50)}px`);
+    b.style.setProperty('--spin', `${dir * (360 + Math.floor(Math.random() * 360))}deg`);
+    b.classList.remove('rolling');
+    void b.offsetWidth; // 애니메이션 다시 시작
+    b.classList.add('rolling');
+
+    // 눈이 처음엔 빠르게, 점점 느리게 바뀌다가 진짜 눈에서 멈춘다.
+    let elapsed = 0;
+    let gap = 45;
+    let face = 1 + Math.floor(Math.random() * 6);
+    while (elapsed + gap < ms * 0.78) {
+      elapsed += gap;
+      face = (face + 1 + Math.floor(Math.random() * 5)) % 6 || 6;
+      const f = face;
+      rollAnim.timers.push(setTimeout(() => paintDie(b, f), elapsed));
+      gap = Math.min(gap * 1.22, 160);
+    }
+    rollAnim.timers.push(setTimeout(() => {
+      rollAnim.dice.delete(i);
+      paintDie(b, ui.model?.dice[i] ?? 0);
+      if (!isRolling()) {
+        $('tray').classList.remove('landing');
+        if (ui.model) renderGame(ui.model);
+      }
+    }, Math.round(ms * 0.8)));
+    rollAnim.timers.push(setTimeout(() => b.classList.remove('rolling'), ms + 20));
+  });
 }
 
 function tdClass(c) {
   return [c.now ? 'now' : '', c.teamStart ? 'team-start' : ''].join(' ').trim();
 }
 
-function renderSheet(m) {
+function renderSheet(m, rolling = false) {
   const table = $('sheet');
   const focused = document.activeElement?.closest?.('#sheet button')?.dataset.cat;
   table.replaceChildren();
@@ -361,7 +451,7 @@ function renderSheet(m) {
         const cell = el('div', 'cell', String(value));
         if (c.just === cat) cell.classList.add('just');
         td.append(cell);
-      } else if (m.previewCol === i && m.canScore) {
+      } else if (m.previewCol === i && m.canScore && !rolling) {
         const s = scoreFor(cat, m.dice);
         const b = el('button', `cell preview${s === 0 ? ' zero' : ''}${ui.armed === cat ? ' armed' : ''}`, String(s));
         b.type = 'button';
@@ -439,6 +529,7 @@ setInterval(updateTimer, 250);
 
 /** 게임 상태를 비우고 연결을 닫는다. */
 function leaveGameState() {
+  stopRolling();
   ui.kind = null;
   ui.model = null;
   ui.armed = null;

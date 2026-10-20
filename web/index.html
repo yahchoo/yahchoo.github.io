@@ -16,15 +16,18 @@
 <body>
   <!-- 홈 -->
   <main id="home" class="screen home" hidden>
-    <div class="home-inner">
+    <div class="home-hero">
       <h1 class="logo">야추</h1>
       <div class="home-dice" id="home-dice" aria-hidden="true"></div>
+    </div>
+    <div class="home-inner">
       <p class="home-lead">주사위 5개, 한 차례에 세 번까지. 12칸을 채워 가장 높은 점수를 노려요.</p>
       <div class="home-actions">
         <button class="btn btn-primary btn-big" data-go="solo">혼자 하기</button>
         <button class="btn btn-secondary btn-big" data-go="online">같이 하기</button>
       </div>
       <p class="home-best" id="home-best"></p>
+      <button class="link" id="solo-new" hidden>혼자 하기 처음부터 새로 하기</button>
       <button class="link" data-open="rules">규칙 보기</button>
     </div>
   </main>
@@ -102,6 +105,9 @@
       <div class="round"><span id="round-now">1</span><small>/ 12</small></div>
       <div class="turn" id="turn-label" aria-live="polite"></div>
       <div class="timer" id="timer" hidden><i id="timer-fill"></i><span id="timer-text"></span></div>
+      <button class="icon-btn" id="game-restart" aria-label="새 게임" title="새 게임" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg>
+      </button>
     </header>
 
     <div class="game-body">
