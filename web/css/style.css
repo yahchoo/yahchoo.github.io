@@ -186,7 +186,23 @@ h1, h2, h3 { margin: 0; font-weight: 400; font-family: var(--display); letter-sp
 }
 .room-code-box span { color: var(--ink-soft); font-size: 14px; }
 .room-code-box strong { font-family: var(--display); font-weight: 400; font-size: 56px; letter-spacing: .18em; line-height: 1.1; margin-right: -.18em; }
-.room-code-box .btn { margin-top: 8px; min-height: 40px; padding: 8px 16px; }
+.room-code-box .btn { margin-top: 8px; min-height: 44px; padding: 8px 18px; display: inline-flex; align-items: center; gap: 8px; }
+.room-code-box .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 공유 창 (휴대폰 기본 공유를 쓸 수 없을 때) */
+.overlay.share-overlay { align-items: end; }
+@media (min-width: 600px) { .overlay.share-overlay { align-items: center; } }
+.share-card h2 { font-size: 26px; }
+.share-msg { color: var(--ink-soft); margin: 6px 0 18px; font-size: 14px; word-break: break-all; white-space: pre-line; user-select: text; }
+.share-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+.share-item {
+  display: grid; justify-items: center; gap: 8px;
+  padding: 8px 2px; border: 0; background: none; border-radius: var(--radius-s);
+  color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 500;
+}
+.share-item:hover { background: var(--sail); }
+.share-ic { width: 52px; height: 52px; border-radius: 50%; background: var(--ic); display: grid; place-items: center; }
+.share-ic svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 .seats { display: grid; gap: 8px; margin: 20px 0 8px; }
 .seats.teams { grid-template-columns: 1fr 1fr; gap: 12px; }

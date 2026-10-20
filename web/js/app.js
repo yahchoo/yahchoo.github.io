@@ -44,7 +44,7 @@ for (const overlay of document.querySelectorAll('.overlay')) {
 }
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
-  for (const id of ['rules', 'confirm']) if (!$(id).hidden) closeOverlay(id);
+  for (const id of ['rules', 'confirm', 'share']) if (!$(id).hidden) closeOverlay(id);
 });
 
 function el(tag, cls, text) {
@@ -771,26 +771,57 @@ function leaveRoom() {
 
 $('lobby-leave').addEventListener('click', leaveRoom);
 $('start-game').addEventListener('click', () => room.conn?.send({ type: 'start' }));
-$('copy-invite').addEventListener('click', async () => {
+/* 친구 초대: 휴대폰·PC의 기본 공유 창(카카오톡, 메시지, SNS 등)을 먼저 쓰고, 없으면 자체 공유 창을 띄운다. */
+function inviteLink() {
   const url = new URL(location.href);
   url.search = '';
   url.hash = '';
   url.searchParams.set('room', room.code);
-  const link = url.toString();
-  const btn = $('copy-invite');
-  try {
-    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
-      await navigator.share({ title: '야추 같이 해요', text: `방 코드 ${room.code}`, url: link });
+  return url.toString();
+}
+
+$('copy-invite').addEventListener('click', async () => {
+  const link = inviteLink();
+  const mode = MODE_LABEL[room.view?.mode] ?? '';
+  const text = `야추 ${mode} 같이 해요! 방 코드 ${room.code}`;
+  const data = { title: '야추 다이스', text, url: link };
+  if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+    try {
+      await navigator.share(data);
       return;
+    } catch (err) {
+      if (err?.name === 'AbortError') return; // 공유 창을 닫음
+      // 그 외 실패(앱 안 브라우저 제한 등)는 자체 공유 창으로
     }
-    await navigator.clipboard.writeText(link);
-    btn.textContent = '복사했어요';
-  } catch {
-    btn.textContent = link;
   }
-  setTimeout(() => {
-    btn.textContent = '초대 링크 복사';
-  }, 2500);
+  openShareSheet(text, link);
+});
+
+function openShareSheet(text, link) {
+  $('share-msg').textContent = `${text}\n${link}`;
+  const body = encodeURIComponent(`${text}\n${link}`);
+  // iOS는 'sms:&body=', 그 외는 'sms:?body='
+  $('share-sms').href = /iPhone|iPad|iPod/.test(navigator.userAgent) ? `sms:&body=${body}` : `sms:?body=${body}`;
+  $('share-x').href = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`;
+  $('share-fb').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`;
+  $('share-copy-label').textContent = '링크 복사';
+  openOverlay('share');
+}
+
+$('share-copy').addEventListener('click', async () => {
+  const link = inviteLink();
+  const label = $('share-copy-label');
+  try {
+    await navigator.clipboard.writeText(link);
+    label.textContent = '복사했어요';
+  } catch {
+    // 클립보드를 쓸 수 없으면 직접 복사할 수 있게 링크를 고른다.
+    const range = document.createRange();
+    range.selectNodeContents($('share-msg'));
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    label.textContent = '길게 눌러 복사';
+  }
 });
 
 function playerCls(view, seat) {
@@ -970,7 +1001,7 @@ function renderLobby(view) {
   const missing = view.seats - view.players.length;
   const balanced = view.mode !== '2v2' || [0, 1].every((t) => view.players.filter((p) => p.team === t).length === 2);
   let note;
-  if (missing > 0) note = `${missing}명 더 들어오면 시작할 수 있어요. 방 코드나 초대 링크를 보내 주세요.`;
+  if (missing > 0) note = `${missing}명 더 들어오면 시작할 수 있어요. '친구 초대하기'로 초대해 주세요.`;
   else if (!balanced) note = '팀마다 두 명씩 맞춰 주세요';
   else if (isHost) note = '모두 모였어요. 시작해 볼까요?';
   else note = '모두 모였어요. 방장이 시작하면 게임이 시작돼요.';
