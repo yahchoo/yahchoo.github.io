@@ -44,7 +44,7 @@ for (const overlay of document.querySelectorAll('.overlay')) {
 }
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
-  for (const id of ['rules', 'confirm', 'share']) if (!$(id).hidden) closeOverlay(id);
+  for (const id of ['rules', 'confirm']) if (!$(id).hidden) closeOverlay(id);
 });
 
 function el(tag, cls, text) {
@@ -791,38 +791,45 @@ $('copy-invite').addEventListener('click', async () => {
       return;
     } catch (err) {
       if (err?.name === 'AbortError') return; // 공유 창을 닫음
-      // 그 외 실패(앱 안 브라우저 제한 등)는 자체 공유 창으로
+      // 그 외 실패(앱 안 브라우저 제한 등)는 링크 복사로
     }
   }
-  openShareSheet(text, link);
+  copyInvite(`${text}\n${link}`);
 });
 
-function openShareSheet(text, link) {
-  $('share-msg').textContent = `${text}\n${link}`;
-  const body = encodeURIComponent(`${text}\n${link}`);
-  // iOS는 'sms:&body=', 그 외는 'sms:?body='
-  $('share-sms').href = /iPhone|iPad|iPod/.test(navigator.userAgent) ? `sms:&body=${body}` : `sms:?body=${body}`;
-  $('share-x').href = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`;
-  $('share-fb').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`;
-  $('share-copy-label').textContent = '링크 복사';
-  openOverlay('share');
-}
-
-$('share-copy').addEventListener('click', async () => {
-  const link = inviteLink();
-  const label = $('share-copy-label');
+/** 기본 공유 창이 없는 곳: 초대 문구와 링크를 복사한다. 붙여 넣으면 링크 미리보기가 붙는다. */
+async function copyInvite(message) {
+  const label = $('invite-label');
+  let copied = false;
   try {
-    await navigator.clipboard.writeText(link);
-    label.textContent = '복사했어요';
+    await navigator.clipboard.writeText(message);
+    copied = true;
   } catch {
-    // 클립보드를 쓸 수 없으면 직접 복사할 수 있게 링크를 고른다.
-    const range = document.createRange();
-    range.selectNodeContents($('share-msg'));
-    getSelection().removeAllRanges();
-    getSelection().addRange(range);
-    label.textContent = '길게 눌러 복사';
+    // 클립보드 API를 못 쓰는 앱 안 브라우저 등은 예전 방식으로
+    const area = el('textarea');
+    area.value = message;
+    area.setAttribute('readonly', '');
+    area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+    document.body.append(area);
+    area.select();
+    try {
+      copied = document.execCommand('copy');
+    } catch {
+      copied = false;
+    }
+    area.remove();
   }
-});
+  if (!copied) {
+    // 그래도 안 되면 직접 복사할 수 있게 보여 준다.
+    window.prompt('아래 링크를 복사해서 친구에게 보내 주세요', message.split('\n').pop());
+    return;
+  }
+  label.textContent = '초대 링크를 복사했어요';
+  clearTimeout(copyInvite.timer);
+  copyInvite.timer = setTimeout(() => {
+    label.textContent = '친구 초대하기';
+  }, 2500);
+}
 
 function playerCls(view, seat) {
   const p = view.players[seat];
