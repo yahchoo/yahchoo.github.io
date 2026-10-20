@@ -1,0 +1,132 @@
+name: CI & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  # main에서만 실행. Cloudflare 시크릿 두 개(CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID)만 있으면
+  # Worker(같이 하기 서버)를 배포하고 주소를 웹에 넘긴다.
+  deploy-worker:
+    name: Deploy game server (Cloudflare)
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Check Cloudflare settings
+        id: cf
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::Cloudflare 시크릿이 없어 서버 배포를 건너뜁니다. 웹은 혼자 하기만 되는 상태로 배포됩니다."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.cf.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Deploy worker
+        id: deploy
+        if: steps.cf.outputs.ready == 'true'
+        run: |
+          npx wrangler deploy 2>&1 | tee deploy.log
+          url="$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -n1)"
+          if [ -z "$url" ]; then
+            echo "::warning::배포된 Worker 주소를 찾지 못했습니다. 저장소 변수 API_BASE_URL에 주소를 직접 넣어 주세요."
+          else
+            echo "Worker URL: $url"
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Health check
+        if: steps.deploy.outputs.url != ''
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS "$URL/api/health"; then echo; exit 0; fi
+            sleep 3
+          done
+          echo "::error::서버가 응답하지 않습니다: $URL/api/health"
+          exit 1
+
+  build-web:
+    name: Build web
+    needs: deploy-worker
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (needs.deploy-worker.result == 'success' || needs.deploy-worker.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # 서버 주소: 저장소 변수 API_BASE_URL이 있으면 그 값, 없으면 방금 배포한 Worker 주소.
+      - name: Write server address
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL || needs.deploy-worker.outputs.url }}
+        run: |
+          mkdir -p _site
+          cp -r web/. _site/
+          if [ -n "$API_BASE_URL" ]; then
+            echo "같이 하기 서버: $API_BASE_URL"
+            printf "export const API_BASE = '%s';\n" "$API_BASE_URL" > _site/js/config.js
+          else
+            echo "::notice::서버 주소가 없어 같이 하기 없이 배포합니다."
+          fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: build-web
+    if: ${{ !cancelled() && needs.build-web.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
