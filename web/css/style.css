@@ -296,6 +296,12 @@ button.die:disabled { cursor: default; }
   100% { transform: none; }
 }
 .tray.landing { animation: thud .76s ease-out; }
+/* 서버 결과를 기다리는 동안 제자리에서 흔들린다 */
+.die.waiting { animation: wobble .22s ease-in-out infinite alternate; }
+@keyframes wobble {
+  from { transform: rotate(-7deg) translateY(-2px); }
+  to { transform: rotate(7deg) translateY(0); }
+}
 @keyframes thud {
   0%, 25% { transform: none; }
   32% { transform: translateY(2px); }

@@ -235,9 +235,12 @@ function onRoll() {
   if (!ui.model?.canRoll || isRolling()) return;
   ui.armed = null;
   if (ui.kind === 'solo') {
+    // 서버에서 굴리는 판은 결과를 기다리지 않고 바로 굴러가기 시작한다.
+    if (solo.online) startRolling({ ...ui.model, rollsLeft: ui.model.rollsLeft - 1 }, { pending: true });
     soloAction(() => solo.roll());
   } else {
-    room.conn?.send({ type: 'roll' });
+    startRolling({ ...ui.model, rollsLeft: ui.model.rollsLeft - 1 }, { pending: true });
+    if (!room.conn?.send({ type: 'roll' })) stopRolling();
   }
 }
 
@@ -297,7 +300,10 @@ function renderGame(m) {
   // 주사위
   const rolled = ui.lastRollSeq !== null && m.rollSeq > ui.lastRollSeq;
   ui.lastRollSeq = m.rollSeq;
-  if (rolled) startRolling(m);
+  if (rolled) {
+    if (rollAnim.pending) settleRolling();
+    else startRolling(m);
+  }
   const rolling = isRolling();
   diceButtons.forEach((b, i) => {
     if (!rollAnim.dice.has(i)) paintDie(b, m.dice[i] ?? 0);
@@ -336,7 +342,7 @@ function renderGame(m) {
 }
 
 /* 굴리는 애니메이션: 고정 안 한 주사위가 굴러 들어오면서 눈이 바뀌다가 하나씩 멈춘다. */
-const rollAnim = { dice: new Set(), timers: [], until: 0 };
+const rollAnim = { dice: new Set(), timers: [], until: 0, pending: false, waiting: new Map(), endAt: 0 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 function isRolling() {
@@ -345,22 +351,29 @@ function isRolling() {
 
 function stopRolling() {
   for (const t of rollAnim.timers) clearTimeout(t);
+  for (const t of rollAnim.waiting.values()) clearInterval(t);
   rollAnim.timers = [];
+  rollAnim.waiting.clear();
   rollAnim.dice.clear();
-  for (const b of diceButtons) b.classList.remove('rolling');
+  rollAnim.pending = false;
+  for (const b of diceButtons) b.classList.remove('rolling', 'waiting');
   $('tray').classList.remove('landing');
 }
 
-function startRolling(m) {
+/**
+ * 굴리기 애니메이션. 고정 안 한 주사위가 굴러 들어오면서 눈이 바뀌다가 하나씩 멈춘다.
+ * pending이면 결과(눈)를 아직 모르는 상태로 먼저 굴리기 시작한다. 결과가 오면 settleRolling()이 멈춘다.
+ */
+function startRolling(m, { pending = false } = {}) {
   stopRolling();
   const moving = diceButtons.map((_, i) => i).filter((i) => !(m.held[i] && m.rollsLeft < ROLLS_PER_TURN - 1));
   // 시간 초과로 대신 굴리고 바로 다음 차례로 넘어간 경우는 보여줄 주사위가 없다.
   if (moving.length === 0 || m.rollsLeft === ROLLS_PER_TURN) return;
-  const yacht = isYacht(m.dice) ? m.turn : null;
   if (reducedMotion.matches) {
-    if (yacht) celebrateYacht(yacht);
+    if (!pending && isYacht(m.dice)) celebrateYacht(m.turn);
     return;
   }
+  rollAnim.pending = pending;
 
   const tray = $('tray');
   void tray.offsetWidth;
@@ -376,9 +389,10 @@ function startRolling(m) {
     b.style.setProperty('--roll-ms', `${ms}ms`);
     b.style.setProperty('--from-x', `${-(40 + Math.random() * 50)}px`);
     b.style.setProperty('--spin', `${dir * (360 + Math.floor(Math.random() * 360))}deg`);
-    b.classList.remove('rolling');
+    b.classList.remove('rolling', 'waiting');
     void b.offsetWidth; // 애니메이션 다시 시작
     b.classList.add('rolling');
+    b.disabled = true;
 
     // 눈이 처음엔 빠르게, 점점 느리게 바뀌다가 진짜 눈에서 멈춘다.
     let elapsed = 0;
@@ -392,17 +406,50 @@ function startRolling(m) {
       gap = Math.min(gap * 1.22, 160);
     }
     rollAnim.timers.push(setTimeout(() => {
-      rollAnim.dice.delete(i);
-      paintDie(b, ui.model?.dice[i] ?? 0);
-      if (!isRolling()) {
-        $('tray').classList.remove('landing');
-        if (ui.model) renderGame(ui.model);
+      if (rollAnim.pending) {
+        // 결과가 아직 안 왔으면 제자리에서 흔들리며 눈이 계속 바뀐다.
+        b.classList.add('waiting');
+        let f = Number(b.dataset.face) || 1;
+        rollAnim.waiting.set(i, setInterval(() => {
+          f = (f + 1 + Math.floor(Math.random() * 5)) % 6 || 6;
+          paintDie(b, f);
+        }, 110));
+        return;
       }
+      landDie(i);
     }, Math.round(ms * 0.8)));
     rollAnim.timers.push(setTimeout(() => b.classList.remove('rolling'), ms + 20));
   });
-  // 야추면 주사위가 모두 멈춘 뒤에 축하한다.
-  if (yacht) rollAnim.timers.push(setTimeout(() => celebrateYacht(yacht), longest + 60));
+  rollAnim.endAt = performance.now() + longest;
+}
+
+/** 주사위 하나를 진짜 눈으로 멈춘다. 마지막 주사위면 화면을 다시 그리고, 야추면 축하한다. */
+function landDie(i) {
+  const b = diceButtons[i];
+  clearInterval(rollAnim.waiting.get(i));
+  rollAnim.waiting.delete(i);
+  b.classList.remove('waiting');
+  rollAnim.dice.delete(i);
+  paintDie(b, ui.model?.dice[i] ?? 0);
+  if (isRolling()) return;
+  $('tray').classList.remove('landing');
+  if (!ui.model) return;
+  renderGame(ui.model);
+  if (isYacht(ui.model.dice)) {
+    const who = ui.model.turn;
+    // 굴러 들어오는 움직임이 끝난 뒤에 축하한다.
+    rollAnim.timers.push(setTimeout(() => celebrateYacht(who), Math.max(0, rollAnim.endAt - performance.now()) + 60));
+  }
+}
+
+/** 먼저 굴리기 시작한 주사위의 결과가 왔다. 흔들리며 기다리던 주사위는 하나씩 멈추고, 아직 굴러가는 주사위는 원래 시간에 멈춘다. */
+function settleRolling() {
+  rollAnim.pending = false;
+  [...rollAnim.waiting.keys()].forEach((i, n) => {
+    clearInterval(rollAnim.waiting.get(i));
+    rollAnim.waiting.set(i, undefined);
+    rollAnim.timers.push(setTimeout(() => landDie(i), 70 + n * 90));
+  });
 }
 
 function isYacht(dice) {
@@ -595,6 +642,7 @@ async function startSolo({ fresh = false } = {}) {
   show('game');
   $('sheet').replaceChildren();
   diceButtons.forEach((b) => { paintDie(b, 0); b.disabled = true; b.classList.remove('held'); });
+  $('round-now').textContent = '1';
   $('roll-label').textContent = '준비하는 중';
   $('roll-btn').disabled = true;
   $('tray-hint').textContent = '';
@@ -612,25 +660,27 @@ async function startSolo({ fresh = false } = {}) {
 }
 
 /** 굴리기·적기처럼 서버를 거치는 동작. 기다리는 동안 다른 입력을 막는다. */
+/** 굴리기·적기. 화면은 바로 바꾸고, 서버 응답이 오면 그 결과로 다시 그린다. */
 async function soloAction(fn) {
   if (!solo || soloBusy) return;
-  soloBusy = true;
+  const game = solo;
+  const done = fn();
   renderSolo();
   try {
-    await fn();
+    await done;
   } catch (err) {
+    if (solo !== game) return;
+    stopRolling();
     toast(err.message ?? '잠시 후 다시 시도해 주세요');
-  } finally {
-    soloBusy = false;
   }
-  if (ui.kind !== 'solo') return;
+  if (ui.kind !== 'solo' || solo !== game) return;
   renderSolo();
   if (soloResult && solo.done) showResult(true);
 }
 
 function renderSolo() {
   if (!solo) return;
-  const ready = !solo.done && !soloBusy;
+  const ready = !solo.done && !soloBusy && !solo.rolling;
   const best = bestScore();
   const m = {
     round: solo.round,
@@ -897,6 +947,10 @@ function enterRoom(code, name) {
         $('online-error').textContent = message;
         setUrlRoom(null);
       } else if (!$('game').hidden) {
+        if (rollAnim.pending) {
+          stopRolling();
+          if (ui.model) renderGame(ui.model);
+        }
         toast(message);
       } else {
         $('lobby-note').textContent = message;

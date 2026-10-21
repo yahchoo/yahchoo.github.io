@@ -166,8 +166,24 @@ class ServerSoloGame {
   constructor(view) {
     this.online = true;
     this.lastScored = null;
+    this.rolling = false; // 굴리기 요청이 서버에 가 있는 동안 true
+    this.queue = Promise.resolve();
     this.apply(view);
     write(SERVER_KEY, view.finished ? null : view.gameId);
+  }
+
+  /** 요청은 보낸 순서대로 하나씩 처리한다. 실패하면 서버 상태로 다시 맞춘다. */
+  enqueue(task) {
+    const run = this.queue.then(task).catch(async (err) => {
+      try {
+        this.apply(await api(`/api/solo/${this.gameId}`));
+      } catch {
+        // 다시 맞추지 못해도 원래 오류를 알린다
+      }
+      throw err;
+    });
+    this.queue = run.catch(() => {});
+    return run;
   }
 
   apply(view) {
@@ -180,21 +196,34 @@ class ServerSoloGame {
     this.rankable = view.rankable;
   }
 
-  async roll() {
-    if (isComplete(this.sheet) || this.rollsLeft <= 0) return;
-    const view = await api('/api/solo/roll', { gameId: this.gameId, held: this.held });
-    this.apply(view);
+  roll() {
+    if (isComplete(this.sheet) || this.rollsLeft <= 0 || this.rolling) return Promise.resolve();
+    const held = [...this.held];
+    this.rolling = true;
+    return this.enqueue(async () => {
+      const view = await api('/api/solo/roll', { gameId: this.gameId, held });
+      this.apply(view);
+    }).finally(() => {
+      this.rolling = false;
+    });
   }
 
-  async score(category) {
-    if (this.rollsLeft === ROLLS_PER_TURN || this.sheet[category] !== undefined) return null;
-    const before = this.sheet;
-    const view = await api('/api/solo/score', { gameId: this.gameId, category });
-    this.apply(view);
-    this.lastScored = { category, score: view.sheet[category] ?? before[category] };
-    if (!view.finished) return null;
-    write(SERVER_KEY, null);
-    return recordBest(view.total);
+  /** 적은 점수는 바로 점수판에 보여 주고(계산 규칙이 같으니 결과도 같다), 서버 확인은 뒤에서 한다. */
+  score(category) {
+    if (this.rolling || this.rollsLeft === ROLLS_PER_TURN || this.sheet[category] !== undefined) return Promise.resolve(null);
+    const value = scoreFor(category, this.dice);
+    this.sheet = { ...this.sheet, [category]: value };
+    this.lastScored = { category, score: value };
+    this.dice = Array(DICE_COUNT).fill(0);
+    this.held = Array(DICE_COUNT).fill(false);
+    this.rollsLeft = ROLLS_PER_TURN;
+    return this.enqueue(async () => {
+      const view = await api('/api/solo/score', { gameId: this.gameId, category });
+      this.apply(view);
+      if (!view.finished) return null;
+      write(SERVER_KEY, null);
+      return recordBest(view.total);
+    });
   }
 }
 
