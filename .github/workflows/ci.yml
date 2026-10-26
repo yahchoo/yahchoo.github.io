@@ -93,6 +93,22 @@ jobs:
         if: steps.cf.outputs.ready == 'true'
         run: npx wrangler d1 migrations apply DB --remote
 
+      # 구글 로그인: 저장소 변수 GOOGLE_CLIENT_ID가 있으면 서버에 넣는다. 없으면 로그인 없이 동작한다.
+      - name: Set Google client ID
+        if: steps.cf.outputs.ready == 'true'
+        env:
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -z "$GOOGLE_CLIENT_ID" ]; then
+            echo "::notice::저장소 변수 GOOGLE_CLIENT_ID가 없어 로그인 없이 배포합니다."
+          elif ! printf '%s' "$GOOGLE_CLIENT_ID" | grep -Eq '^[0-9A-Za-z._-]+\.apps\.googleusercontent\.com$'; then
+            echo "::error::GOOGLE_CLIENT_ID 형식이 이상해요. '...apps.googleusercontent.com'으로 끝나는 클라이언트 ID를 넣어 주세요."
+            exit 1
+          else
+            sed -i "s/^GOOGLE_CLIENT_ID = \"\"/GOOGLE_CLIENT_ID = \"$GOOGLE_CLIENT_ID\"/" wrangler.toml
+            grep '^GOOGLE_CLIENT_ID' wrangler.toml
+          fi
+
       - name: Deploy worker
         id: deploy
         if: steps.cf.outputs.ready == 'true'
@@ -126,18 +142,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # 서버 주소: 저장소 변수 API_BASE_URL이 있으면 그 값, 없으면 방금 배포한 Worker 주소.
+      # 구글 로그인: 저장소 변수 GOOGLE_CLIENT_ID (서버가 없으면 로그인도 쓰지 않는다)
       - name: Write server address
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL || needs.deploy-worker.outputs.url }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
         run: |
           mkdir -p _site
           cp -r web/. _site/
-          if [ -n "$API_BASE_URL" ]; then
-            echo "같이 하기 서버: $API_BASE_URL"
-            printf "export const API_BASE = '%s';\n" "$API_BASE_URL" > _site/js/config.js
-          else
-            echo "::notice::서버 주소가 없어 같이 하기 없이 배포합니다."
+          if [ -z "$API_BASE_URL" ]; then
+            echo "::notice::서버 주소가 없어 같이 하기·랭킹·로그인 없이 배포합니다."
+            GOOGLE_CLIENT_ID=""
           fi
+          echo "서버: ${API_BASE_URL:-없음} / 구글 로그인: ${GOOGLE_CLIENT_ID:-없음}"
+          printf "export const API_BASE = '%s';\nexport const GOOGLE_CLIENT_ID = '%s';\n" "$API_BASE_URL" "$GOOGLE_CLIENT_ID" > _site/js/config.js
+          cat _site/js/config.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

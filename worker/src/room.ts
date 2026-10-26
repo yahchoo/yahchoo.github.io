@@ -1,9 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
+import { grantPoints, userFromToken } from './account';
+import { parseAvatar } from '../../web/js/avatar.js';
 import {
   RoomError,
   type RoomState,
+  attachAccount,
   createRoom,
+  decideRewards,
   disconnect,
   expireTurn,
   hold,
@@ -44,7 +48,23 @@ export class YachtRoom extends DurableObject<Env> {
     return this.ctx.storage.get<RoomState>('state');
   }
 
+  /** 끝난 게임이면 포인트를 한 번만 지급한다. (같은 판으로 두 번 받지 않게 기록으로도 막는다) */
+  private async settleRewards(state: RoomState): Promise<void> {
+    const game = state.game;
+    if (state.phase !== 'finished' || !game || game.rewardsGranted) return;
+    const rewards = decideRewards(state);
+    for (const r of rewards) {
+      try {
+        await grantPoints(this.env, r.userId, r.amount, 'match', `${state.code}:${state.createdAt}:${state.match}`);
+      } catch (err) {
+        console.error('포인트 지급 실패', err);
+      }
+    }
+    game.rewardsGranted = true;
+  }
+
   private async save(state: RoomState): Promise<void> {
+    await this.settleRewards(state);
     await this.ctx.storage.put('state', state);
     // 게임 중에는 차례 마감 시각에, 그 외에는 정리 여부를 보러 깨운다.
     const deadline = state.phase === 'playing' ? state.game?.turnDeadline ?? null : null;
@@ -163,6 +183,17 @@ export class YachtRoom extends DurableObject<Env> {
       // 차례 시간이 지난 상태에서 들어온 요청은 먼저 시간 초과를 반영한다.
       expireTurn(state, now, secureRandom);
       switch (data.type) {
+        case 'auth': {
+          // 로그인한 사람은 들어온 뒤 로그인 토큰을 보내 계정을 연결한다.
+          if (typeof data.token !== 'string' || !/^[A-Za-z0-9_-]{20,100}$/.test(data.token)) return;
+          const user = await userFromToken(this.env, data.token);
+          if (!user) {
+            YachtRoom.sendError(ws, '로그인이 만료됐어요. 이번 판은 포인트 없이 진행돼요');
+            return;
+          }
+          attachAccount(state, att.playerId, user.id, parseAvatar(user.avatar), now);
+          break;
+        }
         case 'team':
           setTeam(state, att.playerId, data.team, now);
           break;
@@ -260,7 +291,8 @@ export class YachtRoom extends DurableObject<Env> {
       return;
     }
 
-    if (expireTurn(state, now, secureRandom)) this.broadcast(state);
+    const changed = expireTurn(state, now, secureRandom);
     await this.save(state);
+    if (changed) this.broadcast(state);
   }
 }

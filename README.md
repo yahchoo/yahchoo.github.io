@@ -37,6 +37,27 @@
 | `POST /api/rankings` | `{gameId, initials}` 랭킹 등록 → 이번 주·전체 순위 |
 | `GET /api/rankings?period=week\|all` | 랭킹 목록 (최대 50개) |
 
+## 로그인·포인트·아바타
+
+- 구글 로그인 (선택). 로그인하지 않아도 모든 게임을 할 수 있음
+- 저장하는 정보: 구글 계정 고유번호(sub), 닉네임, 아바타, 포인트·아이템. 이메일·이름은 저장하지 않음 ([개인정보처리방침](web/privacy.html))
+- 혼자 하기: 로그인한 판은 끝나면 점수만큼 포인트를 받고 닉네임+아바타로 랭킹에 자동 등록 (랭킹에는 사람마다 최고 기록 하나)
+- 로그인하지 않고 끝낸 판도 24시간 안에 로그인하면 포인트를 받을 수 있음
+- 같이 하기: 로그인한 사람은 자기 총점만큼, 끝까지 한 게임에서 1등(2:2는 이긴 팀)이면 50포인트 더
+- 아바타: 동물 6종 + 모자·얼굴·옷·배경 아이템. 목록·가격·그림은 `web/js/avatar.js` (웹과 서버가 함께 씀)
+- 포인트 지급과 구매는 서버에서 트랜잭션으로 처리 (같은 판으로 두 번 받거나, 두 번 눌러 두 번 결제되지 않음)
+
+| API | 설명 |
+| --- | --- |
+| `POST /api/auth/google` | `{credential}` 구글 ID 토큰 → `{token, me}` |
+| `POST /api/auth/logout` | 로그아웃 |
+| `GET /api/me` | 내 정보 (닉네임, 포인트, 아바타, 가진 아이템) |
+| `POST /api/me/profile` | `{nickname?, avatar?}` |
+| `POST /api/shop/buy` | `{itemId}` |
+| `POST /api/solo/claim` | `{gameId}` 로그인하지 않고 끝낸 판의 포인트 받기 |
+
+요청에 `Authorization: Bearer <token>`을 붙이면 로그인한 사용자로 처리합니다. 같이 하기는 방에 들어간 뒤 `{type: 'auth', token}`을 보냅니다.
+
 ## 같이 하기
 
 - 방 만들기에서 방식(1:1, 1:1:1, 2:2)을 고르면 4글자 방 코드가 나옴. 코드나 초대 링크(`?room=CODE`)로 입장
@@ -61,13 +82,18 @@ web/                 # 정적 웹 (빌드 과정 없음)
   index.html
   css/style.css
   js/rules.js        # 족보·점수 계산 (웹과 서버가 함께 씀)
-  js/solo.js         # 혼자 하기 (기기에서 진행, 이어하기·최고 기록 저장)
+  js/solo.js         # 혼자 하기 (서버 굴림, 오프라인이면 기기에서)
+  js/account.js      # 로그인·내 정보
+  js/avatar.js       # 아바타 아이템·그림 (서버도 씀)
+  privacy.html       # 개인정보처리방침
   js/net.js          # 같이 하기 서버 연결·재접속
   js/app.js          # 화면
   js/config.js       # 서버 주소 (배포 때 자동으로 채워짐)
 worker/              # Cloudflare Worker
   src/match.ts       # 방 규칙 (순수 로직, 단위 테스트)
   src/solo.ts        # 혼자 하기(서버 굴림)·이니셜·주간 기준 (순수 로직)
+  src/auth.ts        # 구글 ID 토큰 검증, 로그인 토큰
+  src/account.ts     # 계정·포인트·상점
   migrations/        # D1 테이블 (solo_games, rankings)
   src/room.ts        # Durable Object: 연결·저장·타이머
   src/index.ts       # 라우팅, CORS
@@ -83,6 +109,7 @@ worker/              # Cloudflare Worker
    - `CLOUDFLARE_API_TOKEN`: 2번 토큰
    - `CLOUDFLARE_ACCOUNT_ID`: 3번 ID
 5. `main`에 푸시하거나 **Actions → CI & Deploy → Run workflow**
+6. (구글 로그인) Google Cloud 콘솔에서 OAuth 클라이언트 ID(웹 애플리케이션)를 만들고, 승인된 JavaScript 원본에 `https://yahchoo.github.io`를 넣은 뒤 저장소 **변수** `GOOGLE_CLIENT_ID`에 클라이언트 ID를 넣고 다시 배포
 
 배포할 때 D1 데이터베이스(`yacht-dice`)를 찾거나 만들고 테이블을 준비하는 것까지 자동으로 합니다. Worker 이름은 `yacht-dice-api`라서 다른 프로젝트와 같은 Cloudflare 계정을 써도 겹치지 않습니다. 시크릿이 없으면 서버 배포는 건너뛰고 웹은 혼자 하기만 되는 상태로 배포됩니다. 서버 주소를 직접 정하려면 저장소 변수 `API_BASE_URL`을 넣으세요.
 
@@ -94,6 +121,8 @@ worker/              # Cloudflare Worker
 cd worker && npm install
 npm run dev                 # 로컬 D1 테이블 준비 + 서버: http://127.0.0.1:8787
 npm test                    # 규칙·방 로직 테스트
+
+# 로그인 테스트: worker/.dev.vars에 DEV_LOGIN=1을 넣으면 localhost에서 '개발용 로그인' 버튼이 생김
 
 # 다른 터미널에서
 cd web && python3 -m http.server 5173

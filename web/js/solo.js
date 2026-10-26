@@ -10,6 +10,7 @@ import {
   totalFor,
 } from './rules.js';
 import { apiBase } from './net.js';
+import { api } from './account.js';
 
 const LOCAL_KEY = 'yacht.solo.current'; // 오프라인 게임 (기기에서 굴림)
 const SERVER_KEY = 'yacht.solo.server'; // 서버 게임 id
@@ -70,37 +71,18 @@ export function savedInitials() {
   return typeof v === 'string' ? v : '';
 }
 
-class ApiError extends Error {
-  constructor(message, status) {
-    super(message);
-    this.status = status;
-  }
-}
-
-async function api(path, body) {
-  const base = apiBase();
-  if (!base) throw new ApiError('서버가 연결되지 않았어요', 0);
-  let res;
-  try {
-    res = await fetch(`${base}${path}`, body === undefined ? {} : {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new ApiError('서버에 연결할 수 없어요. 인터넷 연결을 확인해 주세요', 0);
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error ?? '잠시 후 다시 시도해 주세요', res.status);
-  return data;
-}
-
 /** 랭킹 등록. 성공하면 { id, initials, score, rankAll, rankWeek }. */
 export async function submitRanking(gameId, initials) {
   const { entry } = await api('/api/rankings', { gameId, initials });
   write(INITIALS_KEY, initials);
   write(MINE_KEY, [...myRankingIds(), entry.id].slice(-50));
   return entry;
+}
+
+/** 로그인하지 않고 끝낸 판의 포인트를 내 계정으로 받는다. → { points, balance, week, all } */
+export async function claimSolo(gameId) {
+  const { reward } = await api('/api/solo/claim', { gameId });
+  return reward;
 }
 
 /** 랭킹 목록. period: 'week' | 'all' */
@@ -115,6 +97,8 @@ class LocalSoloGame {
   constructor(saved) {
     this.online = false;
     this.rankable = false;
+    this.linked = false;
+    this.claimable = false;
     this.gameId = null;
     if (saved && Array.isArray(saved.dice) && saved.sheet && !isComplete(saved.sheet)) {
       this.sheet = Object.fromEntries(Object.entries(saved.sheet).filter(([k, v]) => isCategory(k) && typeof v === 'number'));
@@ -194,6 +178,9 @@ class ServerSoloGame {
     this.rollsLeft = view.rollsLeft;
     this.rollSeq = view.rollSeq;
     this.rankable = view.rankable;
+    this.linked = !!view.linked;
+    this.claimable = !!view.claimable;
+    if (view.reward) this.reward = view.reward;
   }
 
   roll() {

@@ -45,6 +45,19 @@ export interface Player {
   connected: boolean;
   /** 게임 중에 '나가기'를 눌러 기권했다. */
   left: boolean;
+  /** 로그인한 계정 (포인트를 받는다). 화면에는 보내지 않는다. */
+  userId?: string | null;
+  /** 로그인한 계정의 아바타 (화면에 보여 준다) */
+  avatar?: unknown;
+}
+
+/** 같이 하기에서 이긴 쪽(공동 1등 포함)이 점수에 더해 받는 포인트. 끝까지 했을 때만. */
+export const WIN_BONUS = 50;
+
+export interface Reward {
+  playerId: string;
+  userId: string;
+  amount: number;
 }
 
 export interface ScoredEvent {
@@ -68,6 +81,10 @@ export interface Game {
   turnDeadline: number | null;
   lastScored: ScoredEvent | null;
   endReason: EndReason | null;
+  /** 끝났을 때 정한 포인트 (playerId → 포인트). 로그인한 사람만. */
+  rewards?: Record<string, number>;
+  /** 포인트를 실제로 지급했다. */
+  rewardsGranted?: boolean;
 }
 
 export interface RoomState {
@@ -431,6 +448,45 @@ function rankBy<T extends { total: number; left: boolean; rank: number }>(items:
   return sorted;
 }
 
+/**
+ * 끝난 게임의 포인트를 정한다. 로그인했고 기권하지 않은 사람은 자기 총점만큼,
+ * 끝까지 한 게임에서 1등(2:2는 이긴 팀)이면 WIN_BONUS를 더 받는다. 한 번 정하면 바뀌지 않는다.
+ */
+export function decideRewards(state: RoomState): Reward[] {
+  const game = state.game;
+  if (state.phase !== 'finished' || !game) return [];
+  if (!game.rewards) {
+    const { players, teams } = standings(state);
+    const complete = game.endReason === 'complete';
+    const winnerSeats = new Set<number>(
+      teams
+        ? teams.filter((t) => t.rank === 1 && !t.left).flatMap((t) => t.seats)
+        : players.filter((p) => p.rank === 1 && !p.left).map((p) => p.seat),
+    );
+    game.rewards = {};
+    for (const p of players) {
+      const player = state.players[p.seat];
+      if (!player?.userId || player.left) continue;
+      const bonus = complete && winnerSeats.has(p.seat) ? WIN_BONUS : 0;
+      game.rewards[player.id] = p.total + bonus;
+    }
+  }
+  return Object.entries(game.rewards).flatMap(([playerId, amount]) => {
+    const userId = state.players.find((p) => p.id === playerId)?.userId;
+    return userId && amount > 0 ? [{ playerId, userId, amount }] : [];
+  });
+}
+
+/** 로그인한 계정을 이 자리에 연결한다 (방에 들어온 뒤 한 번). */
+export function attachAccount(state: RoomState, playerId: string, userId: string, avatar: unknown, now: number): void {
+  const player = playerOf(state, playerId);
+  // 이미 끝난 게임의 포인트는 바꾸지 않는다.
+  if (player.userId && player.userId !== userId && state.phase !== 'lobby') throw new RoomError('게임 중에는 계정을 바꿀 수 없어요');
+  player.userId = userId;
+  player.avatar = avatar;
+  state.updatedAt = now;
+}
+
 export function standings(state: RoomState): { players: Standing[]; teams: TeamStanding[] | null } {
   const game = state.game;
   if (!game) return { players: [], teams: null };
@@ -480,6 +536,7 @@ export function viewFor(state: RoomState, playerId: string, now: number) {
       team: p.team,
       connected: p.connected,
       left: p.left,
+      avatar: p.avatar ?? null,
     })),
     game: game
       ? {
@@ -510,6 +567,11 @@ export function viewFor(state: RoomState, playerId: string, now: number) {
             : null,
           endReason: game.endReason,
           standings: state.phase === 'finished' ? standings(state) : null,
+          /** 끝난 뒤 받은 포인트 (자리 → 포인트). 지급이 끝난 뒤에만 보낸다. */
+          rewards:
+            game.rewards && game.rewardsGranted
+              ? Object.fromEntries(Object.entries(game.rewards).map(([id, amount]) => [seatOf(id), amount]))
+              : null,
         }
       : null,
   };

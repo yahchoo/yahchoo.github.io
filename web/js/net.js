@@ -57,8 +57,9 @@ export function activeRoom() {
  * onState(view), onError(message, fatal), onStatus('open' | 'reconnecting')
  */
 export class RoomConnection {
-  constructor({ code, name, onState, onError, onStatus }) {
+  constructor({ code, name, onState, onError, onStatus, getToken = () => null }) {
     this.code = code;
+    this.getToken = getToken;
     this.name = name;
     this.onState = onState;
     this.onError = onError;
@@ -104,6 +105,9 @@ export class RoomConnection {
       if (msg.type === 'welcome') {
         store(pidKey(this.code), msg.playerId);
         store(ACTIVE_KEY, this.code);
+        // 로그인했으면 계정을 연결한다 (포인트·아바타)
+        const token = this.getToken();
+        if (token) ws.send(JSON.stringify({ type: 'auth', token }));
       } else if (msg.type === 'state') {
         this.serverOffset = msg.serverNow - Date.now();
         this.onState(msg);

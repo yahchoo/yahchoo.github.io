@@ -12,8 +12,14 @@ import {
   upperSubtotal,
 } from './rules.js';
 import { makeDie, paintDie } from './dice.js';
-import { bestScore, clearSoloSaves, fetchRankings, hasSoloInProgress, myRankingIds, openSolo, savedInitials, submitRanking } from './solo.js';
+import { bestScore, claimSolo, clearSoloSaves, fetchRankings, hasSoloInProgress, myRankingIds, openSolo, savedInitials, submitRanking } from './solo.js';
 import { RoomConnection, activeRoom, apiBase, createRoom } from './net.js';
+import { ITEMS, ITEM_BY_ID, SLOTS, renderAvatar } from './avatar.js';
+import {
+  authToken, buyItem, currentUser, devLogin, isLocalDev, loginAvailable, logout, mountGoogleButton,
+  onAccountChange, refreshMe, saveProfile, updatePoints,
+} from './account.js';
+import { GOOGLE_CLIENT_ID } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -23,7 +29,8 @@ const NICK_KEY = 'yacht.nick';
 /* ---------------------------------------------------------------- 공통 */
 
 function show(screen) {
-  for (const id of ['home', 'online', 'lobby', 'game', 'ranking']) $(id).hidden = id !== screen;
+  for (const id of ['home', 'online', 'lobby', 'game', 'ranking', 'closet']) $(id).hidden = id !== screen;
+  $('flash').hidden = true;
   window.scrollTo(0, 0);
 }
 
@@ -44,7 +51,7 @@ for (const overlay of document.querySelectorAll('.overlay')) {
 }
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
-  for (const id of ['rules', 'confirm']) if (!$(id).hidden) closeOverlay(id);
+  for (const id of ['rules', 'confirm', 'login']) if (!$(id).hidden) closeOverlay(id);
 });
 
 function el(tag, cls, text) {
@@ -60,10 +67,17 @@ function pennant(cls) {
 
 let toastTimer = null;
 function toast(text) {
-  $('toast').textContent = text;
+  // 게임 화면에서는 트레이 아래, 다른 화면에서는 화면 위쪽에 띄운다.
+  const inGame = !$('game').hidden;
+  const box = inGame ? $('toast') : $('flash');
+  $('toast').textContent = '';
+  $('flash').hidden = true;
+  box.textContent = text;
+  box.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
-    $('toast').textContent = '';
+    box.textContent = '';
+    if (!inGame) box.hidden = true;
   }, 3500);
 }
 
@@ -152,6 +166,7 @@ for (const btn of document.querySelectorAll('[data-go]')) {
     else if (to === 'solo') startSolo();
     else if (to === 'online') showOnline();
     else if (to === 'ranking') showRanking();
+    else if (to === 'closet') showCloset();
   });
 }
 
@@ -675,7 +690,25 @@ async function soloAction(fn) {
   }
   if (ui.kind !== 'solo' || solo !== game) return;
   renderSolo();
-  if (soloResult && solo.done) showResult(true);
+  if (soloResult && solo.done) {
+    if (solo.reward) updatePoints(solo.reward.balance);
+    else if (currentUser() && solo.claimable) await claimFinishedSolo();
+    showResult(true);
+  }
+}
+
+/** 로그인하지 않고(또는 도중에 로그인해서) 끝낸 판의 포인트를 받는다. */
+async function claimFinishedSolo() {
+  if (!solo?.claimable || solo.reward) return;
+  try {
+    solo.reward = await claimSolo(solo.gameId);
+    solo.claimable = false;
+    solo.linked = true;
+    solo.rankable = false;
+    updatePoints(solo.reward.balance);
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 function renderSolo() {
@@ -714,8 +747,47 @@ function renderSolo() {
 
 /* ---------------------------------------------------------------- 랭킹 등록 (결과 화면) */
 
-function renderRankForm(box) {
+/** 결과 화면: 받은 포인트와 랭킹, 또는 로그인하고 받기 */
+function renderSoloReward(box) {
   if (!solo?.online) return;
+  const r = solo.reward;
+  if (r) {
+    const wrap = el('div', 'reward');
+    wrap.append(el('span', 'points-chip', `+${r.points.toLocaleString()} 포인트`));
+    const parts = [];
+    if (r.week) parts.push(`이번 주 ${r.week.rank}위`);
+    if (r.all) parts.push(`전체 ${r.all.rank}위`);
+    const best = r.all?.best;
+    wrap.append(el('small', '', `${parts.join(', ')}${best && best > solo.total ? ` · 내 최고 기록 ${best}점` : ''} · 보유 ${r.balance.toLocaleString()}P`));
+    const go = el('button', 'btn btn-secondary wide', '아바타 꾸미러 가기');
+    go.type = 'button';
+    go.addEventListener('click', () => {
+      closeOverlay('result');
+      showCloset();
+    });
+    wrap.append(go);
+    box.append(wrap);
+    return;
+  }
+  if (solo.claimable && loginAvailable() && !currentUser()) {
+    const wrap = el('div', 'reward');
+    wrap.append(el('span', 'points-chip', `+${solo.total.toLocaleString()} 포인트`));
+    wrap.append(el('small', '', '로그인하면 이 판 점수만큼 포인트를 받고, 닉네임과 아바타로 랭킹에 올라가요'));
+    const b = el('button', 'btn btn-primary wide', '로그인하고 포인트 받기');
+    b.type = 'button';
+    b.addEventListener('click', () => openLogin({
+      after: async () => {
+        await claimFinishedSolo();
+        showResult(true);
+      },
+    }));
+    wrap.append(b);
+    box.append(wrap);
+  }
+}
+
+function renderRankForm(box) {
+  if (!solo?.online || solo.linked) return;
   if (solo.registered) {
     const e = solo.registered;
     const done = el('div', 'rank-done');
@@ -831,14 +903,21 @@ async function loadRanking(period) {
   const mine = new Set(myRankingIds());
   for (const e of data.entries) {
     const li = el('li');
-    if (mine.has(e.id)) li.classList.add('mine');
+    const isMine = e.mine || mine.has(e.id);
+    if (isMine) li.classList.add('mine');
     if (e.id === rankingFocus) li.classList.add('focus');
     const rk = el('span', 'rk');
     if (e.rank <= 3) rk.append(el('span', `medal m${e.rank}`, String(e.rank)));
     else rk.textContent = String(e.rank);
-    const ini = el('span', 'ini', e.initials);
-    if (mine.has(e.id)) ini.append(el('span', 'tag me', '나'));
-    li.append(rk, ini, el('span', 'dt', shortDate(e.playedAt)), el('span', 'sc', String(e.score)));
+    let who;
+    if (e.nickname) {
+      who = el('span', 'who');
+      who.append(miniAvatar(e.avatar), el('span', 'nick', e.nickname));
+    } else {
+      who = el('span', 'ini', e.initials);
+    }
+    if (isMine) who.append(el('span', 'tag me', '나'));
+    li.append(rk, who, el('span', 'dt', shortDate(e.playedAt)), el('span', 'sc', String(e.score)));
     list.append(li);
   }
   list.querySelector('li.focus')?.scrollIntoView({ block: 'center' });
@@ -857,7 +936,7 @@ for (const btn of document.querySelectorAll('.mode')) {
 function showOnline(prefillCode = '') {
   leaveGameState();
   show('online');
-  $('nick').value = nickname();
+  $('nick').value = nickname() || currentUser()?.nickname || '';
   $('room-code').value = prefillCode;
   $('online-error').textContent = apiBase() ? '' : '같이 하기 서버가 아직 연결되지 않았어요. 혼자 하기는 바로 할 수 있어요.';
   if (!$('nick').value) $('nick').focus();
@@ -937,6 +1016,7 @@ function enterRoom(code, name) {
   show('lobby');
 
   room.conn = new RoomConnection({
+    getToken: authToken,
     code,
     name,
     onState: onRoomState,
@@ -1177,7 +1257,9 @@ function renderLobby(view) {
   const seatEl = (seat) => {
     const p = view.players[seat];
     const row = el('div', 'seat');
-    row.append(pennant(playerCls(view, seat)), el('span', 'name', p.name));
+    row.append(pennant(playerCls(view, seat)));
+    if (p.avatar) row.append(miniAvatar(p.avatar));
+    row.append(el('span', 'name', p.name));
     if (seat === view.you) row.append(el('span', 'tag me', '나'));
     if (seat === view.host) row.append(el('span', 'tag', '방장'));
     if (!p.connected) row.append(el('span', 'tag', '연결 끊김'));
@@ -1257,6 +1339,7 @@ function showResult(open) {
       el('div', '', soloResult?.newBest ? '새 최고 기록이에요' : `최고 기록 ${best ?? total}점`),
     );
     $('result-note').textContent = solo.online ? '' : '오프라인으로 한 판이라 랭킹에 올릴 수 없어요';
+    renderSoloReward(extra);
     renderRankForm(extra);
     actionBtn('점수판 보기', 'btn-ghost', viewSheet);
     actionBtn('한 판 더', 'btn-primary', () => {
@@ -1277,11 +1360,11 @@ function showResult(open) {
   const nameOf = (seat) => view.players[seat]?.name ?? '';
   const forfeit = view.game.endReason === 'forfeit';
 
-  const row = (rank, cls, name, note, total, first) => {
+  const row = (rank, cls, name, note, total, first, avatar) => {
     const li = el('li', first ? 'first' : '');
     const nm = el('span', 'nm', name);
     if (note) nm.append(el('small', '', note));
-    li.append(el('span', 'rk', `${rank}`), pennant(cls), nm, el('span', 'sc', String(total)));
+    li.append(el('span', 'rk', `${rank}`), avatar ? miniAvatar(avatar) : pennant(cls), nm, el('span', 'sc', String(total)));
     list.append(li);
   };
 
@@ -1304,8 +1387,22 @@ function showResult(open) {
     sub.textContent = forfeit ? '상대가 나가서 끝났어요' : '';
     for (const p of players) {
       const note = [p.seat === me ? '나' : '', p.left ? '기권' : ''].filter(Boolean).join(' · ');
-      row(p.rank, playerCls(view, p.seat), nameOf(p.seat), note, p.total, p.rank === 1 && top.length === 1);
+      row(p.rank, playerCls(view, p.seat), nameOf(p.seat), note, p.total, p.rank === 1 && top.length === 1, view.players[p.seat]?.avatar);
     }
+  }
+
+  const myReward = view.game.rewards?.[me];
+  if (myReward !== undefined) {
+    const wrap = el('div', 'reward');
+    wrap.append(el('span', 'points-chip', `+${myReward.toLocaleString()} 포인트`));
+    const won = (teams ? teams.find((t) => t.seats.includes(me)) : players.find((p) => p.seat === me))?.rank === 1;
+    wrap.append(el('small', '', won && !forfeit ? '내 점수에 1등 보너스 50포인트를 더했어요' : '내 점수만큼 받았어요'));
+    extra.append(wrap);
+    refreshMe();
+  } else if (view.game.rewards && !currentUser() && loginAvailable()) {
+    const wrap = el('div', 'reward');
+    wrap.append(el('small', '', '로그인하면 다음 판부터 점수만큼 포인트를 받아 아바타를 꾸밀 수 있어요'));
+    extra.append(wrap);
   }
 
   actionBtn('점수판 보기', 'btn-ghost', viewSheet);
@@ -1319,10 +1416,280 @@ function showResult(open) {
   if (open) openOverlay('result');
 }
 
+/* ---------------------------------------------------------------- 계정: 상단 버튼, 로그인, 닉네임 */
+
+function miniAvatar(avatar, size = 34) {
+  const box = el('span', 'mini-av');
+  box.style.width = box.style.height = `${size}px`;
+  box.innerHTML = renderAvatar(avatar, { size, round: true });
+  return box;
+}
+
+function renderAccountBar() {
+  const bar = $('account-bar');
+  bar.replaceChildren();
+  if (!loginAvailable()) return;
+  const me = currentUser();
+  const b = el('button', 'account-btn');
+  b.type = 'button';
+  if (me) {
+    const av = el('span', 'av');
+    av.innerHTML = renderAvatar(me.avatar, { size: 32, round: true });
+    b.append(av, el('span', 'nm', me.nickname), el('span', 'points-chip', `${me.points.toLocaleString()}P`));
+    b.setAttribute('aria-label', `내 아바타: ${me.nickname}, ${me.points}포인트`);
+    b.addEventListener('click', showCloset);
+  } else {
+    b.classList.add('login');
+    b.textContent = '로그인하고 아바타 꾸미기';
+    b.addEventListener('click', () => openLogin({ after: showCloset }));
+  }
+  bar.append(b);
+}
+
+let loginAfter = null;
+
+/** 로그인 창. 로그인하면(처음이면 닉네임을 정한 뒤) after()를 부른다. */
+function openLogin({ after = null } = {}) {
+  loginAfter = after;
+  $('login-error').textContent = '';
+  const samples = [
+    { animal: 'cat', hat: 'captain', bg: 'sea' },
+    { animal: 'penguin', outfit: 'sailor', bg: 'navy' },
+    { animal: 'fox', hat: 'crown', face: 'sunglasses', bg: 'gold' },
+  ];
+  $('login-avatars').replaceChildren(...samples.map((a) => miniAvatar(a, 56)));
+  $('dev-login').hidden = !(isLocalDev() && !GOOGLE_CLIENT_ID);
+  openOverlay('login');
+  mountGoogleButton($('google-btn'), {
+    onDone: loginDone,
+    onError: (message) => {
+      $('login-error').textContent = message;
+    },
+  });
+}
+
+$('dev-login').addEventListener('click', async () => {
+  try {
+    await devLogin('local');
+    loginDone();
+  } catch (err) {
+    $('login-error').textContent = `${err.message} (worker/.dev.vars에 DEV_LOGIN=1이 있어야 해요)`;
+  }
+});
+
+function loginDone() {
+  closeOverlay('login');
+  const after = loginAfter;
+  loginAfter = null;
+  const me = currentUser();
+  toast(`${me?.nickname ?? ''}님, 반가워요`);
+  if (me && !me.nicknameSet) openNickname({ after });
+  else after?.();
+}
+
+let nicknameAfter = null;
+
+function openNickname({ after = null } = {}) {
+  const me = currentUser();
+  if (!me) return;
+  nicknameAfter = after;
+  $('nickname-avatar').innerHTML = renderAvatar(me.avatar, { size: 96, round: true });
+  $('nickname-title').textContent = me.nicknameSet ? '닉네임 바꾸기' : '닉네임을 정해 주세요';
+  $('nickname-input').value = me.nickname;
+  $('nickname-error').textContent = '';
+  openOverlay('nickname');
+  $('nickname-input').focus();
+  $('nickname-input').select();
+}
+
+$('nickname-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const name = $('nickname-input').value.replace(/\s+/g, ' ').trim();
+  if (!name) {
+    $('nickname-error').textContent = '닉네임을 입력해 주세요';
+    return;
+  }
+  const btn = $('nickname-save');
+  btn.disabled = true;
+  try {
+    await saveProfile({ nickname: name });
+    closeOverlay('nickname');
+    const after = nicknameAfter;
+    nicknameAfter = null;
+    after?.();
+  } catch (err) {
+    $('nickname-error').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+// 닉네임 창은 바깥을 눌러 닫으면 지금 닉네임을 그대로 쓴다.
+$('nickname').addEventListener('click', (ev) => {
+  if (ev.target !== $('nickname')) return;
+  const me = currentUser();
+  closeOverlay('nickname');
+  if (me && !me.nicknameSet) saveProfile({ nickname: me.nickname }).catch(() => {});
+  const after = nicknameAfter;
+  nicknameAfter = null;
+  after?.();
+});
+
+/* ---------------------------------------------------------------- 내 아바타 (꾸미기·상점) */
+
+const closet = { slot: 'animal', draft: null };
+
+function owns(me, id) {
+  return id === null || ITEM_BY_ID[id]?.price === 0 || me.owned.includes(id);
+}
+
+function sameAvatar(a, b) {
+  return SLOTS.every((s) => (a[s.id] ?? null) === (b[s.id] ?? null));
+}
+
+function showCloset() {
+  const me = currentUser();
+  if (!me) {
+    if (loginAvailable()) openLogin({ after: showCloset });
+    return;
+  }
+  leaveGameState();
+  setUrlRoom(null);
+  closet.draft = { ...me.avatar };
+  show('closet');
+  renderCloset();
+  refreshMe();
+}
+
+function renderCloset() {
+  const me = currentUser();
+  if (!me || $('closet').hidden) return;
+  const draft = closet.draft;
+  $('closet-points').textContent = `${me.points.toLocaleString()}P`;
+  $('closet-preview').innerHTML = renderAvatar(draft, { size: 168, title: `${me.nickname}의 아바타` });
+  $('closet-nickname').textContent = me.nickname;
+
+  const tabs = $('slot-tabs');
+  tabs.replaceChildren();
+  for (const s of SLOTS) {
+    const b = el('button', '', s.name);
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(s.id === closet.slot));
+    b.addEventListener('click', () => {
+      closet.slot = s.id;
+      renderCloset();
+    });
+    tabs.append(b);
+  }
+
+  const grid = $('item-grid');
+  grid.replaceChildren();
+  const slot = SLOTS.find((s) => s.id === closet.slot);
+  const options = [...(slot.optional ? [null] : []), ...ITEMS.filter((it) => it.slot === closet.slot).map((it) => it.id)];
+  for (const id of options) {
+    const item = id ? ITEM_BY_ID[id] : null;
+    const have = owns(me, id);
+    const card = el('button', 'item');
+    card.type = 'button';
+    card.setAttribute('role', 'listitem');
+    card.setAttribute('aria-pressed', String((draft[closet.slot] ?? null) === id));
+    if ((me.avatar[closet.slot] ?? null) === id) card.classList.add('worn');
+    if (!have) card.classList.add('locked');
+    if (!have && item.price > me.points) card.classList.add('short');
+    if (id) {
+      const art = el('span');
+      art.innerHTML = renderAvatar({ ...draft, [closet.slot]: id }, { size: 72 });
+      card.append(art.firstElementChild);
+    } else {
+      card.append(el('span', 'none-mark', '없음'));
+    }
+    card.append(el('span', 'item-name', item ? item.name : '안 쓰기'));
+    card.append(el('span', 'item-state', have ? (item?.price === 0 || !item ? '기본' : '가지고 있음') : `${item.price.toLocaleString()}P`));
+    card.setAttribute('aria-label', `${item ? item.name : '안 쓰기'}, ${have ? '가지고 있음' : `${item.price}포인트`}`);
+    card.addEventListener('click', () => {
+      closet.draft = { ...closet.draft, [closet.slot]: id };
+      renderCloset();
+    });
+    grid.append(card);
+  }
+  renderClosetBar();
+}
+
+/** 아래 막대: 고른 아이템 사기 또는 저장 */
+function renderClosetBar() {
+  const me = currentUser();
+  const bar = $('closet-bar');
+  const draft = closet.draft;
+  const changed = !sameAvatar(draft, me.avatar);
+  const unowned = SLOTS.map((s) => draft[s.id]).filter((id) => !owns(me, id));
+  const action = $('closet-action');
+  bar.hidden = !changed;
+  if (!changed) return;
+  action.disabled = false;
+  if (unowned.length) {
+    // 아직 없는 아이템이 있으면 먼저 산다 (지금 보고 있는 칸의 아이템 우선)
+    const id = unowned.includes(draft[closet.slot]) ? draft[closet.slot] : unowned[0];
+    const item = ITEM_BY_ID[id];
+    action.dataset.buy = id;
+    action.textContent = `${item.name} 사기 · ${item.price.toLocaleString()}P`;
+    if (item.price > me.points) {
+      action.disabled = true;
+      $('closet-bar-text').textContent = `포인트가 ${(item.price - me.points).toLocaleString()} 모자라요. 게임을 끝내면 점수만큼 받아요.`;
+    } else {
+      $('closet-bar-text').textContent = `사면 ${(me.points - item.price).toLocaleString()}P가 남아요`;
+    }
+  } else {
+    delete action.dataset.buy;
+    action.textContent = '이대로 입기';
+    $('closet-bar-text').textContent = '바꾼 모습을 저장하면 랭킹과 같이 하기에서도 보여요';
+  }
+}
+
+$('closet-action').addEventListener('click', async () => {
+  const action = $('closet-action');
+  action.disabled = true;
+  try {
+    if (action.dataset.buy) {
+      const item = ITEM_BY_ID[action.dataset.buy];
+      await buyItem(item.id);
+      toast(`${item.name}을(를) 샀어요`);
+    } else {
+      await saveProfile({ avatar: closet.draft });
+      toast('저장했어요');
+    }
+  } catch (err) {
+    toast(err.message);
+  }
+  renderCloset();
+});
+
+$('closet-reset').addEventListener('click', () => {
+  closet.draft = { ...currentUser().avatar };
+  renderCloset();
+});
+
+$('closet-rename').addEventListener('click', () => openNickname({ after: renderCloset }));
+
+$('logout').addEventListener('click', () => {
+  confirmExit('로그아웃할까요? 포인트와 아바타는 계정에 그대로 남아 있어요.', async () => {
+    await logout();
+    showHome();
+  }, '로그아웃');
+});
+
+onAccountChange(() => {
+  renderAccountBar();
+  if (!$('closet').hidden) {
+    if (currentUser()) renderCloset();
+    else showHome();
+  }
+});
+
 /* ---------------------------------------------------------------- 시작 */
 
 function boot() {
   paintHomeDice();
+  renderAccountBar();
+  refreshMe();
   const params = new URLSearchParams(location.search);
   const linked = (params.get('room') ?? '').toUpperCase();
   const active = activeRoom();

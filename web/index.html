@@ -34,6 +34,7 @@
   <!-- 홈 -->
   <main id="home" class="screen home" hidden>
     <div class="home-hero">
+      <div class="account-bar" id="account-bar"></div>
       <h1 class="logo">야추</h1>
       <div class="home-dice" id="home-dice" aria-hidden="true"></div>
     </div>
@@ -93,6 +94,37 @@
         </div>
       </section>
       <p class="form-error" id="online-error" role="alert"></p>
+    </div>
+  </main>
+
+  <!-- 내 아바타 (꾸미기·상점) -->
+  <main id="closet" class="screen panel-screen" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-go="home" aria-label="처음으로">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h2>내 아바타</h2>
+      <span class="points-chip" id="closet-points"></span>
+    </header>
+    <div class="panel closet">
+      <div class="closet-stage">
+        <div class="closet-preview" id="closet-preview"></div>
+        <div class="closet-name">
+          <strong id="closet-nickname"></strong>
+          <button class="link" id="closet-rename">닉네임 바꾸기</button>
+        </div>
+      </div>
+      <div class="tabs slot-tabs" role="tablist" aria-label="꾸밀 부분" id="slot-tabs"></div>
+      <div class="item-grid" id="item-grid" role="list"></div>
+      <p class="closet-help">게임 한 판을 끝내면 점수만큼 포인트를 받아요. 같이 하기에서 1등을 하면 50포인트를 더 받아요.</p>
+      <button class="link closet-logout" id="logout">로그아웃</button>
+    </div>
+    <div class="closet-bar" id="closet-bar" hidden>
+      <p id="closet-bar-text"></p>
+      <div class="closet-bar-actions">
+        <button class="btn btn-ghost" id="closet-reset">되돌리기</button>
+        <button class="btn btn-primary" id="closet-action"></button>
+      </div>
     </div>
   </main>
 
@@ -201,6 +233,32 @@
     </div>
   </div>
 
+  <!-- 로그인 -->
+  <div class="overlay" id="login" hidden>
+    <div class="sheet-card login-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="login-avatars" aria-hidden="true" id="login-avatars"></div>
+      <h2 id="login-title">로그인하고 아바타 꾸미기</h2>
+      <p class="login-lead" id="login-lead">게임 한 판을 끝낼 때마다 점수만큼 포인트를 받아요. 포인트로 동물 캐릭터를 꾸미고, 랭킹에는 닉네임과 아바타로 올라가요.</p>
+      <div class="google-btn" id="google-btn"></div>
+      <button class="btn btn-secondary wide" id="dev-login" hidden>개발용 로그인 (localhost)</button>
+      <p class="form-error" id="login-error" role="alert"></p>
+      <p class="login-note">구글 계정의 이메일과 이름은 저장하지 않아요. <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>
+      <button class="btn btn-ghost wide" data-close>나중에 할게요</button>
+    </div>
+  </div>
+
+  <!-- 닉네임 정하기 -->
+  <div class="overlay" id="nickname" hidden>
+    <form class="sheet-card nickname-card" role="dialog" aria-modal="true" aria-labelledby="nickname-title" id="nickname-form" novalidate>
+      <div class="nickname-avatar" id="nickname-avatar" aria-hidden="true"></div>
+      <h2 id="nickname-title">닉네임을 정해 주세요</h2>
+      <p class="login-lead">랭킹과 같이 하기에서 이 이름으로 보여요. 8글자까지, 나중에 바꿀 수 있어요.</p>
+      <input id="nickname-input" maxlength="8" autocomplete="nickname" aria-label="닉네임">
+      <p class="form-error" id="nickname-error" role="alert"></p>
+      <button class="btn btn-primary wide" type="submit" id="nickname-save">이 닉네임 쓰기</button>
+    </form>
+  </div>
+
   <div class="overlay" id="confirm" hidden>
     <div class="sheet-card confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-text">
       <p id="confirm-text"></p>
@@ -212,5 +270,6 @@
   </div>
 
   <p class="conn-banner" id="conn-banner" hidden></p>
+  <p class="flash" id="flash" role="status" aria-live="polite" hidden></p>
 </body>
 </html>

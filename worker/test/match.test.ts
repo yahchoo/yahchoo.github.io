@@ -3,6 +3,9 @@ import { CATEGORIES } from '../../web/js/rules.js';
 import {
   AWAY_TURN_MS,
   RoomError,
+  WIN_BONUS,
+  attachAccount,
+  decideRewards,
   TURN_MS,
   type Mode,
   type RoomState,
@@ -283,5 +286,68 @@ describe('화면 상태', () => {
     expect(view.you).toBe(1);
     expect(view.game!.lastScored).toMatchObject({ category: 'ones' });
     expect(view.game!.lastScored).not.toHaveProperty('playerId');
+  });
+});
+
+describe('포인트', () => {
+  it('로그인한 사람만, 총점 + 1등 보너스', () => {
+    const { s } = room('1v1v1', 3);
+    attachAccount(s, 'p0', 'u0', null, T0);
+    attachAccount(s, 'p2', 'u2', null, T0);
+    start(s, 'p0', T0, first);
+    for (let i = 0; i < 36; i++) playTurn(s);
+    const r = decideRewards(s);
+    // 모두 같은 점수(공동 1등) → 로그인한 두 사람 모두 총점 + 보너스
+    const total = viewFor(s, 'p0', T0).game!.sheets[0].total;
+    expect(r).toEqual(expect.arrayContaining([
+      expect.objectContaining({ userId: 'u0', amount: total + WIN_BONUS }),
+      expect.objectContaining({ userId: 'u2', amount: total + WIN_BONUS }),
+    ]));
+    expect(r).toHaveLength(2);
+    // 다시 불러도 같은 결과
+    expect(decideRewards(s)).toEqual(r);
+  });
+
+  it('기권하면 보너스 없음, 나간 사람은 포인트 없음', () => {
+    const { s } = room('1v1', 2);
+    attachAccount(s, 'p0', 'u0', null, T0);
+    attachAccount(s, 'p1', 'u1', null, T0);
+    start(s, 'p0', T0, first);
+    playTurn(s);
+    playTurn(s); // 두 사람 모두 한 칸씩 (에이스 5점)
+    leave(s, 'p1', T0);
+    const r = decideRewards(s);
+    expect(r.map((x) => x.userId)).toEqual(['u0']);
+    expect(r[0].amount).toBe(viewFor(s, 'p0', T0).game!.sheets.find((x) => x.seat === 0)!.total);
+  });
+
+  it('2:2는 이긴 팀 두 사람이 보너스', () => {
+    const { s } = room('2v2', 4);
+    for (const id of ['p0', 'p1', 'p2', 'p3']) attachAccount(s, id, `u${id}`, null, T0);
+    start(s, 'p0', T0, first);
+    // 0팀(p0, p2)만 야추를 적게 만든다: 0팀 차례에는 6을, 1팀 차례에는 1을 굴린다
+    for (let i = 0; i < 48; i++) {
+      const id = s.game!.order[s.game!.turn];
+      const team = s.players.find((p) => p.id === id)!.team;
+      roll(s, id, T0, team === 0 ? () => 0.99 : () => 0);
+      const open = ['yacht', 'ones', 'twos', 'threes', 'fours', 'fives', 'sixes', 'choice', 'fourKind', 'fullHouse', 'smallStraight', 'largeStraight']
+        .find((c) => (s.game!.sheets[id] as Record<string, number | undefined>)[c] === undefined)!;
+      score(s, id, open, T0);
+    }
+    expect(s.phase).toBe('finished');
+    const r = Object.fromEntries(decideRewards(s).map((x) => [x.userId, x.amount]));
+    const totals = Object.fromEntries(s.game!.order.map((id) => [id, viewFor(s, id, T0).game!.sheets.find((x) => x.seat === s.players.findIndex((p) => p.id === id))!.total]));
+    expect(r.up0).toBe(totals.p0 + WIN_BONUS);
+    expect(r.up2).toBe(totals.p2 + WIN_BONUS);
+    expect(r.up1).toBe(totals.p1);
+    expect(r.up3).toBe(totals.p3);
+  });
+
+  it('화면 상태에는 계정 id를 보내지 않는다', () => {
+    const { s } = room('1v1', 2);
+    attachAccount(s, 'p0', 'secret-user', { animal: 'fox' }, T0);
+    const text = JSON.stringify(viewFor(s, 'p1', T0));
+    expect(text).not.toContain('secret-user');
+    expect(text).toContain('fox');
   });
 });
