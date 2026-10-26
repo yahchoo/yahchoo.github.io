@@ -307,7 +307,7 @@ function renderGame(m) {
   const turn = $('turn-label');
   turn.replaceChildren();
   if (m.turn) {
-    turn.append(pennant(m.turn.cls), el('span', '', m.turn.me ? '내 차례' : `${m.turn.name} 차례`));
+    turn.append(m.turn.avatar ? miniAvatar(m.turn.avatar, 30) : pennant(m.turn.cls), el('span', '', m.turn.me ? '내 차례' : `${m.turn.name} 차례`));
   } else if (m.finished) {
     turn.append(el('span', '', '게임 끝'));
   }
@@ -336,7 +336,15 @@ function renderGame(m) {
   else if (m.rollsLeft === ROLLS_PER_TURN) hint = '주사위를 굴려서 시작해요';
   else if (m.rollsLeft > 0) hint = '남길 주사위를 눌러 고정하거나, 점수판에서 칸을 골라요';
   else hint = '점수판에서 적을 칸을 골라요';
-  $('tray-hint').textContent = hint;
+  const hintBox = $('tray-hint');
+  hintBox.replaceChildren();
+  if (!rolling && !m.finished && m.turn && !m.turn.me && m.turn.avatar) {
+    hintBox.classList.add('with-av');
+    hintBox.append(miniAvatar(m.turn.avatar, 44), el('span', '', hint));
+  } else {
+    hintBox.classList.remove('with-av');
+    hintBox.textContent = hint;
+  }
 
   // 굴리기 버튼
   const btn = $('roll-btn');
@@ -529,7 +537,15 @@ function renderSheet(m, rolling = false) {
     const th = el('th', [c.now ? 'now' : '', c.teamStart ? 'team-start' : ''].join(' ').trim());
     const ph = el('div', 'ph');
     // 상태 줄은 비어 있어도 자리를 차지해서 머리글 높이를 맞춘다.
-    ph.append(pennant(c.cls), el('span', 'nm', c.name), el('span', 'st', c.status || '\u00a0'));
+    if (c.avatar) {
+      // 아바타 아래에 자리 색 띠를 둘러 누구 열인지 구분한다.
+      const av = miniAvatar(c.avatar, 40);
+      av.classList.add('ring', c.cls);
+      ph.append(av);
+    } else {
+      ph.append(pennant(c.cls));
+    }
+    ph.append(el('span', 'nm', c.name), el('span', 'st', c.status || '\u00a0'));
     th.append(ph);
     hr.append(th);
   }
@@ -717,7 +733,7 @@ function renderSolo() {
   const best = bestScore();
   const m = {
     round: solo.round,
-    turn: solo.done ? null : { name: '나', cls: 'c0', me: true },
+    turn: solo.done ? null : { name: '나', cls: 'c0', me: true, avatar: currentUser()?.avatar },
     deadline: null,
     dice: solo.dice,
     held: solo.held,
@@ -730,8 +746,9 @@ function renderSolo() {
     previewCol: 0,
     teams: null,
     columns: [{
-      name: '나',
+      name: currentUser()?.nickname ?? '나',
       cls: 'c0',
+      avatar: currentUser()?.avatar,
       status: solo.online ? (best === null ? '' : `최고 ${best}`) : '오프라인',
       scores: solo.sheet,
       upper: upperSubtotal(solo.sheet),
@@ -1197,6 +1214,7 @@ function onRoomState(view) {
     return {
       name: p.name,
       cls: playerCls(view, seat),
+      avatar: p.avatar,
       status,
       scores: s.scores,
       upper: s.upper,
@@ -1220,7 +1238,7 @@ function onRoomState(view) {
   const turnSheet = sheetOf(g.turn);
   const m = {
     round: finished ? 12 : Math.min(12, (turnSheet ? filledCount(turnSheet.scores) : 0) + 1),
-    turn: finished ? null : { name: nameOf(g.turn), cls: playerCls(view, g.turn), me: myTurn },
+    turn: finished ? null : { name: nameOf(g.turn), cls: playerCls(view, g.turn), me: myTurn, avatar: view.players[g.turn]?.avatar },
     deadline: finished ? null : g.turnDeadline,
     turnMs: view.players[g.turn]?.connected === false ? 10_000 : 60_000,
     now: () => room.conn?.now() ?? Date.now(),
@@ -1423,6 +1441,24 @@ function miniAvatar(avatar, size = 34) {
   box.style.width = box.style.height = `${size}px`;
   box.innerHTML = renderAvatar(avatar, { size, round: true });
   return box;
+}
+
+/** 홈: 로그인했으면 내 아바타 카드 */
+function renderHomeCard() {
+  const box = $('home-card');
+  const me = currentUser();
+  box.replaceChildren();
+  box.hidden = !me || !loginAvailable();
+  if (box.hidden) return;
+  const card = el('button', 'home-card');
+  card.type = 'button';
+  card.addEventListener('click', showCloset);
+  const art = el('span', 'home-card-av');
+  art.innerHTML = renderAvatar(me.avatar, { size: 76, title: `${me.nickname}의 아바타` });
+  const info = el('span', 'home-card-info');
+  info.append(el('strong', '', me.nickname), el('span', 'points-chip', `${me.points.toLocaleString()}P`));
+  card.append(art, info, el('span', 'home-card-go', '꾸미기'));
+  box.append(card);
 }
 
 function renderAccountBar() {
@@ -1678,6 +1714,11 @@ $('logout').addEventListener('click', () => {
 
 onAccountChange(() => {
   renderAccountBar();
+  renderHomeCard();
+  if (ui.kind === 'solo' && solo && !$('game').hidden) renderSolo();
+  // 방에 있으면 로그인(또는 바뀐 아바타)을 알린다
+  const token = authToken();
+  if (token && room.conn) room.conn.send({ type: 'auth', token });
   if (!$('closet').hidden) {
     if (currentUser()) renderCloset();
     else showHome();
@@ -1689,6 +1730,7 @@ onAccountChange(() => {
 function boot() {
   paintHomeDice();
   renderAccountBar();
+  renderHomeCard();
   refreshMe();
   const params = new URLSearchParams(location.search);
   const linked = (params.get('room') ?? '').toUpperCase();
