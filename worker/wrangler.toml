@@ -25,6 +25,6 @@ new_sqlite_classes = ["YachtRoom"]
 
 [vars]
 # 서버를 쓸 수 있는 웹 주소. 저장소 이름을 바꾸거나 도메인을 붙이면 여기에 추가한다.
-ALLOWED_ORIGINS = "https://yahchoo.github.io,http://localhost,http://127.0.0.1"
+ALLOWED_ORIGINS = "https://yahchoo.ohsangplay.com,https://yahchoo.github.io,http://localhost,http://127.0.0.1"
 # 구글 로그인 OAuth 클라이언트 ID. 배포 때 GitHub Actions가 저장소 변수 GOOGLE_CLIENT_ID 값으로 채운다.
 GOOGLE_CLIENT_ID = ""
