@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
-import { grantPoints, userFromToken } from './account';
+import { grantPoints, spendPoints, userFromToken } from './account';
+import { JEERS } from '../../web/js/points.js';
 import { parseAvatar } from '../../web/js/avatar.js';
 import {
   RoomError,
@@ -31,14 +32,18 @@ const IDLE_MS = 15 * 60 * 1000;
 /** 사람이 접속해 있어도 이 시간 넘게 아무 행동이 없으면 지운다. */
 const ABANDON_MS = 2 * 60 * 60 * 1000;
 
-/** 관전자는 playerId가 null. */
+/** 관전자는 playerId가 null. 로그인한 관전자는 userId·nickname이 있다 (야유에 포인트를 쓴다). */
 interface Attachment {
   playerId: string | null;
+  userId?: string;
+  nickname?: string;
 }
 
 const WATCH_TAG = 'watch';
 /** 관전자 한 명이 응원을 보낼 수 있는 간격. */
 const CHEER_GAP_MS = 800;
+/** 야유는 포인트가 들어서 조금 더 길게. */
+const JEER_GAP_MS = 1500;
 
 /** 0 이상 1 미만의 암호학적 난수. 주사위는 서버에서만 굴린다. */
 function secureRandom(): number {
@@ -49,6 +54,7 @@ function secureRandom(): number {
 export class YachtRoom extends DurableObject<Env> {
   /** 관전자별 마지막 응원 시각 (잠들면 비워져도 괜찮다). */
   private lastCheer = new WeakMap<WebSocket, number>();
+  private lastJeer = new WeakMap<WebSocket, number>();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     // 접속 유지용 ping은 객체를 깨우지 않고 바로 응답한다.
@@ -196,7 +202,7 @@ export class YachtRoom extends DurableObject<Env> {
     if (!att || typeof message !== 'string') return;
     // 관전자는 보기와 응원만 한다.
     if (!att.playerId) {
-      await this.cheer(ws, message);
+      await this.watcherMessage(ws, att, message);
       return;
     }
     const playerId = att.playerId;
@@ -279,22 +285,68 @@ export class YachtRoom extends DurableObject<Env> {
     this.broadcast(state);
   }
 
-  /** 관전자 응원: 저장하지 않고 방 안 모두에게 바로 알린다. */
-  private async cheer(ws: WebSocket, message: string): Promise<void> {
+  /**
+   * 관전자 메시지. auth: 로그인 연결, cheer: 응원(무료), jeer: 야유(포인트 차감).
+   * 응원·야유는 저장하지 않고 방 안 모두에게 바로 알린다.
+   */
+  private async watcherMessage(ws: WebSocket, att: Attachment, message: string): Promise<void> {
     let data: Record<string, unknown>;
     try {
       data = JSON.parse(message);
     } catch {
       return;
     }
-    if (data.type !== 'cheer') return;
     const now = Date.now();
-    if (now - (this.lastCheer.get(ws) ?? 0) < CHEER_GAP_MS) return;
-    const state = await this.load();
-    const target = state ? cheerTarget(state, data.target) : null;
-    if (!target) return;
-    this.lastCheer.set(ws, now);
-    const out = JSON.stringify({ type: 'cheer', ...target });
+
+    if (data.type === 'auth') {
+      if (typeof data.token !== 'string' || !/^[A-Za-z0-9_-]{20,100}$/.test(data.token)) return;
+      const user = await userFromToken(this.env, data.token);
+      if (!user) return;
+      ws.serializeAttachment({ playerId: null, userId: user.id, nickname: user.nickname } satisfies Attachment);
+      return;
+    }
+
+    if (data.type === 'cheer') {
+      if (now - (this.lastCheer.get(ws) ?? 0) < CHEER_GAP_MS) return;
+      const state = await this.load();
+      const target = state ? cheerTarget(state, data.target) : null;
+      if (!target) return;
+      this.lastCheer.set(ws, now);
+      this.sendAll({ type: 'cheer', ...target });
+      return;
+    }
+
+    if (data.type === 'jeer') {
+      const action = typeof data.action === 'string' && Object.hasOwn(JEERS, data.action) ? data.action : null;
+      if (!action) return;
+      if (!att.userId) {
+        YachtRoom.sendError(ws, '로그인하면 포인트로 야유할 수 있어요');
+        return;
+      }
+      if (now - (this.lastJeer.get(ws) ?? 0) < JEER_GAP_MS) return;
+      const state = await this.load();
+      const target = state ? cheerTarget(state, data.target) : null;
+      if (!target) return;
+      this.lastJeer.set(ws, now);
+      const { cost } = JEERS[action as keyof typeof JEERS];
+      const ok = await spendPoints(this.env, att.userId, cost, 'jeer');
+      if (!ok) {
+        YachtRoom.sendError(ws, `포인트가 부족해요. 야유에는 ${cost}포인트가 들어요`);
+        return;
+      }
+      const row = await this.env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(att.userId).first<{ points: number }>();
+      try {
+        ws.send(JSON.stringify({ type: 'balance', points: row?.points ?? 0 }));
+      } catch {
+        // 무시
+      }
+      this.sendAll({ type: 'jeer', action, by: att.nickname ?? '', ...target });
+    }
+  }
+
+  /** 저장하지 않는 알림을 방 안 모두에게. */
+  private sendAll(payload: Record<string, unknown>): void {
+    const out = JSON.stringify(payload);
     for (const s of this.ctx.getWebSockets()) {
       if (s.readyState !== WebSocket.OPEN) continue;
       try {

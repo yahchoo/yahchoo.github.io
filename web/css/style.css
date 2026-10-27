@@ -694,7 +694,21 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
 #sit-down { margin-top: 4px; }
 
 /* ---------- 관전 응원 ---------- */
-.cheer-row { display: grid; grid-template-columns: repeat(min(var(--n, 2), 3), minmax(0, 1fr)); gap: 8px; }
+.cheer-row { display: grid; gap: 8px; }
+.act-targets { display: grid; grid-template-columns: repeat(min(var(--n, 2), 3), minmax(0, 1fr)); gap: 8px; }
+.act-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 999px; background: var(--sail); }
+.act-tab {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  min-height: 38px; padding: 0 8px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink-soft); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.act-tab small { font-size: 11px; font-weight: 500; opacity: .8; }
+.act-tab[aria-checked="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+.act-icon { display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none; }
+.act-icon svg { width: 20px; height: 20px; }
+.act-icon .pen { width: 16px; height: 11px; }
+.act-note { margin: 0; text-align: center; font-size: 12px; color: var(--ink-soft); }
+.btn-cheer.jeer { background: color-mix(in srgb, var(--pc) 10%, var(--paper)); }
 .btn-cheer {
   min-height: 60px; padding: 8px 10px; gap: 8px;
   background: var(--paper); color: var(--ink); font-size: 16px;
@@ -748,3 +762,52 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
   .tray-area > .ad-desktop { display: block; min-height: 270px; margin-top: 56px; }
   .tray-area > .ad-desktop[hidden] { display: none; }
 }
+
+/* ---------- 관전 야유: 뿅망치, 바나나 껍질 ---------- */
+.jeer-fx { position: fixed; z-index: 16; width: 0; height: 0; pointer-events: none; }
+.jeer-fx .shout {
+  position: absolute; left: 0; top: -14px;
+  font-family: var(--display); font-size: 30px; line-height: 1; white-space: nowrap;
+  color: var(--signal-red); -webkit-text-stroke: 5px var(--paper); paint-order: stroke fill;
+  animation: shout 1.1s ease-out both;
+}
+.jeer-banana .shout { color: #c99a00; }
+/* 손잡이 아래를 축으로 오른쪽 위에서 내려친다. 망치 머리 끝이 대상 위치에 닿는다. */
+.jeer-fx .hammer {
+  position: absolute; left: 16px; top: -71px; width: 84px; height: 84px;
+  transform-origin: 50% 95%;
+  animation: bonk 1.5s cubic-bezier(.5, 0, .5, 1) both;
+}
+.jeer-fx .hammer svg { width: 100%; height: 100%; display: block; }
+@keyframes bonk {
+  0% { transform: rotate(10deg); opacity: 0; }
+  10% { opacity: 1; }
+  20% { transform: rotate(25deg); }
+  30% { transform: rotate(-72deg); }
+  38% { transform: rotate(-58deg); }
+  46% { transform: rotate(-70deg); }
+  80% { transform: rotate(-68deg); opacity: 1; }
+  100% { transform: rotate(-30deg); opacity: 0; }
+}
+.jeer-fx .star {
+  position: absolute; left: -6px; top: -6px; width: 12px; height: 12px;
+  background: var(--signal-yellow);
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  animation: star .7s ease-out both;
+}
+@keyframes star {
+  0% { transform: translate(0, 0) scale(.4); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.1) rotate(90deg); opacity: 0; }
+}
+.jeer-fx .peel { position: absolute; left: -26px; top: -22px; width: 52px; height: 45px; animation: peel-out 1.9s linear both; }
+.jeer-fx .peel svg { width: 100%; height: 100%; display: block; }
+@keyframes peel-out { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.sheet.bonk { animation: bonk-shake .4s ease; }
+@keyframes bonk-shake {
+  0%, 100% { transform: none; }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -1px); }
+  60% { transform: translate(-3px, 1px); }
+  80% { transform: translate(2px, 0); }
+}
+.jeer-hammer .shout { left: -34px; top: -58px; }

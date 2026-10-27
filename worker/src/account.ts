@@ -5,6 +5,7 @@ import { HttpError, json, readJson } from './http';
 import { AuthError, SESSION_MS, bearerToken, hashToken, newSessionToken, verifyGoogleIdToken } from './auth';
 import { DEFAULT_AVATAR, ITEM_BY_ID, parseAvatar, validateAvatar } from '../../web/js/avatar.js';
 import { RoomError, cleanName } from './match';
+import { NICKNAME_CHANGE_COST } from '../../web/js/points.js';
 
 export interface UserRow {
   id: string;
@@ -71,6 +72,35 @@ export async function grantPoints(env: Env, userId: string, amount: number, reas
     ).bind(userId, amount, reason, ref, now),
   ]);
   return updated.meta.changes > 0;
+}
+
+/**
+ * 포인트 쓰기. 잔액이 모자라면 아무것도 바꾸지 않고 false.
+ * 기록과 차감을 한 트랜잭션으로 한다. ref는 매번 새 값이라 같은 요청이 두 번 빠지지 않는다.
+ * extra: 차감이 됐을 때만 함께 실행할 문장 (같은 ref 기록이 있을 때만 바뀌게 쓴다).
+ */
+export async function spendPoints(
+  env: Env,
+  userId: string,
+  amount: number,
+  reason: string,
+  extra: (ref: string) => D1PreparedStatement[] = () => [],
+): Promise<boolean> {
+  if (!(amount > 0)) return false;
+  const ref = crypto.randomUUID();
+  const now = Date.now();
+  const [logged] = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO point_log (user_id, amount, reason, ref, created_at)
+       SELECT ?1, -?2, ?3, ?4, ?5 WHERE (SELECT points FROM users WHERE id = ?1) >= ?2`,
+    ).bind(userId, amount, reason, ref, now),
+    env.DB.prepare(
+      `UPDATE users SET points = points - ?2, updated_at = ?5
+        WHERE id = ?1 AND EXISTS (SELECT 1 FROM point_log WHERE user_id = ?1 AND reason = ?3 AND ref = ?4)`,
+    ).bind(userId, amount, reason, ref, now),
+    ...extra(ref),
+  ]);
+  return logged.meta.changes > 0;
 }
 
 function defaultNickname(): string {
@@ -140,6 +170,7 @@ async function updateProfile(request: Request, env: Env): Promise<Response> {
   let nickname = user.nickname;
   let nicknameSet = user.nickname_set;
   let avatar = user.avatar;
+  let paidRename = false;
   if (body.nickname !== undefined) {
     try {
       nickname = cleanName(body.nickname);
@@ -147,6 +178,8 @@ async function updateProfile(request: Request, env: Env): Promise<Response> {
       if (err instanceof RoomError) throw new HttpError(400, err.message);
       throw err;
     }
+    // 처음 정할 때는 무료, 그 뒤로 바꾸면 포인트가 든다. (같은 이름 그대로면 무료)
+    paidRename = !!user.nickname_set && nickname !== user.nickname;
     nicknameSet = 1;
   }
   if (body.avatar !== undefined) {
@@ -154,8 +187,19 @@ async function updateProfile(request: Request, env: Env): Promise<Response> {
     if ('error' in checked) throw new HttpError(400, checked.error as string);
     avatar = JSON.stringify(checked.avatar);
   }
+  if (paidRename) {
+    const ok = await spendPoints(env, user.id, NICKNAME_CHANGE_COST, 'nickname', (ref) => [
+      env.DB.prepare(
+        `UPDATE users SET nickname = ?1 WHERE id = ?2
+          AND EXISTS (SELECT 1 FROM point_log WHERE user_id = ?2 AND reason = 'nickname' AND ref = ?3)`,
+      ).bind(nickname, user.id, ref),
+    ]);
+    if (!ok) {
+      throw new HttpError(409, `닉네임을 바꾸려면 ${NICKNAME_CHANGE_COST}포인트가 필요해요. ${NICKNAME_CHANGE_COST - user.points}포인트 더 모아야 해요`);
+    }
+  }
   const updated = await env.DB.prepare(
-    'UPDATE users SET nickname = ?, nickname_set = ?, avatar = ?, updated_at = ? WHERE id = ? RETURNING *',
+    `UPDATE users SET nickname = ?, nickname_set = ?, avatar = ?, updated_at = ? WHERE id = ? RETURNING *`,
   )
     .bind(nickname, nicknameSet, avatar, Date.now(), user.id)
     .first<UserRow>();

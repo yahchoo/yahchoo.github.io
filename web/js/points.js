@@ -26,3 +26,14 @@ export function placeBonus(mode, rank) {
   if (!table || !(rank >= 1)) return 0;
   return table[Math.min(rank, table.length) - 1];
 }
+
+// ---------------------------------------------------------------- 포인트 쓰는 곳
+
+/** 처음 정한 뒤 닉네임을 바꿀 때 드는 포인트 */
+export const NICKNAME_CHANGE_COST = 300;
+
+/** @type {Record<string, { name: string, short: string, cost: number, verb: string }>} 관전자 야유 (쓸 때마다 포인트 차감) */
+export const JEERS = {
+  hammer: { name: '뿅망치', short: '뿅망치', cost: 20, verb: '뿅망치!' },
+  banana: { name: '바나나 껍질', short: '바나나', cost: 20, verb: '바나나 껍질 투척!' },
+};

@@ -57,9 +57,11 @@ export function activeRoom() {
  * onState(view), onError(message, fatal), onStatus('open' | 'reconnecting')
  */
 export class RoomConnection {
-  constructor({ code, name, onState, onError, onStatus, onCheer = () => {}, getToken = () => null }) {
+  constructor({ code, name, onState, onError, onStatus, onCheer = () => {}, onJeer = () => {}, onBalance = () => {}, getToken = () => null }) {
     this.code = code;
     this.onCheer = onCheer;
+    this.onJeer = onJeer;
+    this.onBalance = onBalance;
     this.getToken = getToken;
     this.name = name;
     this.onState = onState;
@@ -108,8 +110,10 @@ export class RoomConnection {
       }
       if (msg.type === 'welcome') {
         if (msg.spectator) {
-          // 관전자: 자리가 없으니 재접속 열쇠도 없다.
+          // 관전자: 자리가 없으니 재접속 열쇠도 없다. 로그인했으면 계정만 연결한다 (야유 포인트).
           this.watching = true;
+          const token = this.getToken();
+          if (token) ws.send(JSON.stringify({ type: 'auth', token }));
           return;
         }
         this.watching = false;
@@ -123,6 +127,10 @@ export class RoomConnection {
         this.onState(msg);
       } else if (msg.type === 'cheer') {
         this.onCheer(msg);
+      } else if (msg.type === 'jeer') {
+        this.onJeer(msg);
+      } else if (msg.type === 'balance') {
+        if (typeof msg.points === 'number') this.onBalance(msg.points);
       } else if (msg.type === 'error') {
         if (msg.fatal) {
           this.forget();
