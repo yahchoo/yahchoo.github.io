@@ -1490,8 +1490,8 @@ function openLogin({ after = null } = {}) {
   $('login-error').textContent = '';
   const samples = [
     { animal: 'cat', hat: 'captain', bg: 'sea' },
-    { animal: 'penguin', outfit: 'sailor', bg: 'navy' },
-    { animal: 'fox', hat: 'crown', face: 'sunglasses', bg: 'gold' },
+    { animal: 'woman', outfit: 'sailor', bg: 'navy' },
+    { animal: 'parrot', hat: 'crown', face: 'sunglasses', bg: 'gold' },
   ];
   $('login-avatars').replaceChildren(...samples.map((a) => miniAvatar(a, 56)));
   $('dev-login').hidden = !(isLocalDev() && !GOOGLE_CLIENT_ID);
@@ -1574,6 +1574,13 @@ $('nickname').addEventListener('click', (ev) => {
 
 const closet = { slot: 'animal', draft: null };
 
+function lockIcon() {
+  const box = el('span', 'lock');
+  box.setAttribute('aria-hidden', 'true');
+  box.innerHTML = '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.4" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="15.2" r="1.7" fill="#fff"/><path d="M12 15.6v2.4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  return box;
+}
+
 function owns(me, id) {
   return id === null || ITEM_BY_ID[id]?.price === 0 || me.owned.includes(id);
 }
@@ -1632,15 +1639,16 @@ function renderCloset() {
     if (!have) card.classList.add('locked');
     if (!have && item.price > me.points) card.classList.add('short');
     if (id) {
-      const art = el('span');
+      const art = el('span', 'item-art');
       art.innerHTML = renderAvatar({ ...draft, [closet.slot]: id }, { size: 72 });
-      card.append(art.firstElementChild);
+      if (!have) art.append(lockIcon());
+      card.append(art);
     } else {
       card.append(el('span', 'none-mark', '없음'));
     }
     card.append(el('span', 'item-name', item ? item.name : '안 쓰기'));
     card.append(el('span', 'item-state', have ? (item?.price === 0 || !item ? '기본' : '가지고 있음') : `${item.price.toLocaleString()}P`));
-    card.setAttribute('aria-label', `${item ? item.name : '안 쓰기'}, ${have ? '가지고 있음' : `${item.price}포인트`}`);
+    card.setAttribute('aria-label', `${item ? item.name : '안 쓰기'}, ${have ? '가지고 있음' : `잠김, ${item.price}포인트로 열기`}`);
     card.addEventListener('click', () => {
       closet.draft = { ...closet.draft, [closet.slot]: id };
       renderCloset();
@@ -1666,7 +1674,7 @@ function renderClosetBar() {
     const id = unowned.includes(draft[closet.slot]) ? draft[closet.slot] : unowned[0];
     const item = ITEM_BY_ID[id];
     action.dataset.buy = id;
-    action.textContent = `${item.name} 사기 · ${item.price.toLocaleString()}P`;
+    action.textContent = `${item.name} ${item.slot === 'animal' ? '열기' : '사기'} · ${item.price.toLocaleString()}P`;
     if (item.price > me.points) {
       action.disabled = true;
       $('closet-bar-text').textContent = `포인트가 ${(item.price - me.points).toLocaleString()} 모자라요. 게임을 끝내면 점수만큼 받아요.`;

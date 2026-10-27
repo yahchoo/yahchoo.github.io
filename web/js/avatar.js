@@ -19,10 +19,15 @@ export const SLOTS = [
 export const ITEMS = [
   { id: 'cat', slot: 'animal', name: '고양이', price: 0 },
   { id: 'dog', slot: 'animal', name: '강아지', price: 0 },
-  { id: 'bear', slot: 'animal', name: '곰', price: 0 },
-  { id: 'rabbit', slot: 'animal', name: '토끼', price: 300 },
-  { id: 'fox', slot: 'animal', name: '여우', price: 500 },
-  { id: 'penguin', slot: 'animal', name: '펭귄', price: 800 },
+  { id: 'man', slot: 'animal', name: '남자', price: 0 },
+  { id: 'woman', slot: 'animal', name: '여자', price: 0 },
+  { id: 'mouse', slot: 'animal', name: '쥐', price: 300 },
+  { id: 'frog', slot: 'animal', name: '개구리', price: 300 },
+  { id: 'beaver', slot: 'animal', name: '비버', price: 500 },
+  { id: 'seal', slot: 'animal', name: '물범', price: 500 },
+  { id: 'parrot', slot: 'animal', name: '앵무새', price: 800 },
+  { id: 'wolf', slot: 'animal', name: '늑대', price: 1000 },
+  { id: 'giraffe', slot: 'animal', name: '기린', price: 1200 },
 
   { id: 'beanie', slot: 'hat', name: '털모자', price: 150 },
   { id: 'ribbon', slot: 'hat', name: '리본', price: 150 },
@@ -112,78 +117,156 @@ const INK = '#16213a';
 const ANIMALS = {
   cat: { fur: '#f2a65a', dark: '#d9853a', light: '#fde2c2', inner: '#f7b4b4' },
   dog: { fur: '#d9a066', dark: '#8a5a34', light: '#f5dcc0', inner: '#8a5a34' },
-  bear: { fur: '#8d6748', dark: '#6b4c33', light: '#d8b896', inner: '#c49a78' },
-  rabbit: { fur: '#f4f1ea', dark: '#d9d3c7', light: '#ffffff', inner: '#f5b5c4' },
-  fox: { fur: '#e8743b', dark: '#3b2a26', light: '#fff6ec', inner: '#f9c7a0' },
-  penguin: { fur: '#24304f', dark: '#141c33', light: '#ffffff', inner: '#24304f' },
+  man: { fur: '#f6cba6', dark: '#3b2a22', light: '#ffe2c9', inner: '#e8a98a', shirt: '#4f7fd1' },
+  woman: { fur: '#f6cba6', dark: '#5a3424', light: '#ffe2c9', inner: '#e8a98a', shirt: '#e8768f' },
+  mouse: { fur: '#aeb3bf', dark: '#878c99', light: '#e4e6ec', inner: '#f5b5c4' },
+  frog: { fur: '#6cc070', dark: '#3f8f46', light: '#d6f0c4', inner: '#3f8f46' },
+  beaver: { fur: '#9b6a43', dark: '#6e472b', light: '#d7b38d', inner: '#6e472b' },
+  seal: { fur: '#a9bccd', dark: '#7d93a8', light: '#e3ebf2', inner: '#7d93a8' },
+  parrot: { fur: '#3fb24f', dark: '#2a8a38', light: '#f7e27a', inner: '#e8463b' },
+  wolf: { fur: '#8c93a3', dark: '#5d6474', light: '#eef0f4', inner: '#c9ccd6' },
+  giraffe: { fur: '#f2c14e', dark: '#b5712d', light: '#f9e2a3', inner: '#b5712d' },
 };
 
+/** 얼굴 장식·모자를 동물 모양에 맞추는 위치 보정 (세로 이동) */
+const FIT = {
+  frog: { face: -12, hat: -9 },
+  parrot: { face: -2, hat: 0 },
+  giraffe: { face: -2, hat: 2 },
+};
+
+function eyes(y = 58, dx = 11) {
+  return `<circle cx="${60 - dx}" cy="${y}" r="3.6" fill="${INK}"/><circle cx="${60 + dx}" cy="${y}" r="3.6" fill="${INK}"/>
+<circle cx="${61.2 - dx}" cy="${y - 1.2}" r="1.1" fill="#fff"/><circle cx="${61.2 + dx}" cy="${y - 1.2}" r="1.1" fill="#fff"/>`;
+}
+const smile = (y = 70) => `<path d="M54 ${y} q6 5 12 0" stroke="${INK}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`;
+
+/** 머리 뒤에 그리는 것 (귀, 뒷머리) */
 function ears(animal, c) {
   switch (animal) {
     case 'cat':
       return `<path d="M33 46 L36 18 L56 34 Z" fill="${c.fur}"/><path d="M37 40 L39 25 L50 34 Z" fill="${c.inner}"/>
 <path d="M87 46 L84 18 L64 34 Z" fill="${c.fur}"/><path d="M83 40 L81 25 L70 34 Z" fill="${c.inner}"/>`;
-    case 'dog':
-      return ''; // 늘어진 귀는 머리 위에 그린다
-    case 'bear':
-      return `<circle cx="36" cy="34" r="11" fill="${c.fur}"/><circle cx="36" cy="34" r="6" fill="${c.inner}"/>
-<circle cx="84" cy="34" r="11" fill="${c.fur}"/><circle cx="84" cy="34" r="6" fill="${c.inner}"/>`;
-    case 'rabbit':
-      return `<ellipse cx="47" cy="20" rx="8" ry="22" transform="rotate(-10 47 20)" fill="${c.fur}" stroke="${c.dark}" stroke-width="1.5"/>
-<ellipse cx="47" cy="22" rx="4" ry="15" transform="rotate(-10 47 22)" fill="${c.inner}"/>
-<ellipse cx="73" cy="20" rx="8" ry="22" transform="rotate(10 73 20)" fill="${c.fur}" stroke="${c.dark}" stroke-width="1.5"/>
-<ellipse cx="73" cy="22" rx="4" ry="15" transform="rotate(10 73 22)" fill="${c.inner}"/>`;
-    case 'fox':
-      return `<path d="M31 48 L32 14 L56 32 Z" fill="${c.fur}"/><path d="M32 24 L32 14 L41 21 Z" fill="${c.dark}"/><path d="M36 40 L36 24 L49 33 Z" fill="${c.inner}"/>
-<path d="M89 48 L88 14 L64 32 Z" fill="${c.fur}"/><path d="M88 24 L88 14 L79 21 Z" fill="${c.dark}"/><path d="M84 40 L84 24 L71 33 Z" fill="${c.inner}"/>`;
+    case 'mouse':
+      return `<circle cx="34" cy="34" r="15" fill="${c.fur}"/><circle cx="34" cy="34" r="9" fill="${c.inner}"/>
+<circle cx="86" cy="34" r="15" fill="${c.fur}"/><circle cx="86" cy="34" r="9" fill="${c.inner}"/>`;
+    case 'beaver':
+      return `<circle cx="37" cy="36" r="8" fill="${c.dark}"/><circle cx="83" cy="36" r="8" fill="${c.dark}"/>`;
+    case 'wolf':
+      return `<path d="M32 50 L33 14 L57 33 Z" fill="${c.fur}"/><path d="M33 24 L33 14 L42 21 Z" fill="${c.dark}"/><path d="M37 42 L37 25 L50 34 Z" fill="${c.inner}"/>
+<path d="M88 50 L87 14 L63 33 Z" fill="${c.fur}"/><path d="M87 24 L87 14 L78 21 Z" fill="${c.dark}"/><path d="M83 42 L83 25 L70 34 Z" fill="${c.inner}"/>`;
+    case 'giraffe':
+      return `<path d="M48 34 L46 16" stroke="${c.fur}" stroke-width="5" stroke-linecap="round"/><circle cx="46" cy="15" r="5" fill="${c.dark}"/>
+<path d="M72 34 L74 16" stroke="${c.fur}" stroke-width="5" stroke-linecap="round"/><circle cx="74" cy="15" r="5" fill="${c.dark}"/>
+<ellipse cx="29" cy="47" rx="10" ry="5" transform="rotate(-20 29 47)" fill="${c.fur}"/><ellipse cx="91" cy="47" rx="10" ry="5" transform="rotate(20 91 47)" fill="${c.fur}"/>`;
+    case 'woman':
+      // 어깨까지 내려오는 뒷머리
+      return `<path d="M28 60 q-2 -34 32 -34 q34 0 32 34 l2 34 q-8 6 -16 2 l-2 -30 h-32 l-2 30 q-8 4 -16 -2 z" fill="${c.dark}"/>`;
     default:
       return '';
   }
 }
 
 function head(animal, c) {
-  const eyes = `<circle cx="49" cy="58" r="3.6" fill="${INK}"/><circle cx="71" cy="58" r="3.6" fill="${INK}"/>
-<circle cx="50.2" cy="56.8" r="1.1" fill="#fff"/><circle cx="72.2" cy="56.8" r="1.1" fill="#fff"/>`;
   switch (animal) {
     case 'cat':
       return `<circle cx="60" cy="58" r="29" fill="${c.fur}"/>
 <path d="M60 29 l-4 9 h8 z M50 31 l-2 7 h5 z M70 31 l2 7 h-5 z" fill="${c.dark}"/>
-<ellipse cx="60" cy="69" rx="13" ry="9" fill="${c.light}"/>${eyes}
+<ellipse cx="60" cy="69" rx="13" ry="9" fill="${c.light}"/>${eyes()}
 <path d="M57 65 h6 l-3 3.5 z" fill="#e2798a"/><path d="M60 68.5 q-3 4 -6 2 M60 68.5 q3 4 6 2" stroke="${INK}" stroke-width="1.6" fill="none" stroke-linecap="round"/>
 <path d="M44 66 h-12 M44 70 l-11 3 M76 66 h12 M76 70 l11 3" stroke="${c.dark}" stroke-width="1.5" stroke-linecap="round"/>`;
     case 'dog':
       return `<circle cx="60" cy="58" r="29" fill="${c.fur}"/>
 <ellipse cx="68" cy="47" rx="10" ry="8" fill="${c.light}" opacity=".55"/>
-<ellipse cx="60" cy="70" rx="14" ry="10" fill="${c.light}"/>${eyes}
+<ellipse cx="60" cy="70" rx="14" ry="10" fill="${c.light}"/>${eyes()}
 <ellipse cx="60" cy="65" rx="5" ry="3.6" fill="${INK}"/><path d="M60 68.5 v3 q-3 3 -6 1 M60 71.5 q3 3 6 1" stroke="${INK}" stroke-width="1.6" fill="none" stroke-linecap="round"/>
 <path d="M33 40 q-8 4 -6 26 q2 8 9 4 q4 -14 6 -26 z" fill="${c.dark}"/><path d="M87 40 q8 4 6 26 q-2 8 -9 4 q-4 -14 -6 -26 z" fill="${c.dark}"/>`;
-    case 'bear':
+    case 'man':
+      return `<ellipse cx="32" cy="60" rx="4.5" ry="6.5" fill="${c.fur}"/><ellipse cx="88" cy="60" rx="4.5" ry="6.5" fill="${c.fur}"/>
+<circle cx="60" cy="58" r="27" fill="${c.fur}"/>
+<path d="M33 54 q-3 -26 27 -26 q30 0 27 26 q-4 -12 -14 -14 q-6 6 -22 6 q-12 0 -14 -2 q-3 4 -4 10 z" fill="${c.dark}"/>
+${eyes(60, 10)}<path d="M45 52 h8 M67 52 h8" stroke="${c.dark}" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M60 63 q-2 3 0 4" stroke="${c.inner}" stroke-width="1.8" fill="none" stroke-linecap="round"/>${smile(72)}`;
+    case 'woman':
+      return `<circle cx="60" cy="58" r="27" fill="${c.fur}"/>
+<path d="M33 58 q-4 -30 27 -30 q31 0 27 30 q-6 -14 -16 -18 q-8 10 -26 12 q-8 0 -12 6 z" fill="${c.dark}"/>
+${eyes(60, 10)}<path d="M45 55 q4 -2 8 0 M67 55 q4 -2 8 0" stroke="${c.dark}" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+<ellipse cx="44" cy="68" rx="5" ry="3" fill="#ff9aa8" opacity=".55"/><ellipse cx="76" cy="68" rx="5" ry="3" fill="#ff9aa8" opacity=".55"/>
+<path d="M60 63 q-2 3 0 4" stroke="${c.inner}" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M55 72 q5 4 10 0" stroke="#d65a6c" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+    case 'mouse':
+      return `<circle cx="60" cy="58" r="28" fill="${c.fur}"/>
+<ellipse cx="60" cy="70" rx="12" ry="9" fill="${c.light}"/>${eyes()}
+<circle cx="60" cy="66" r="3.4" fill="#e2798a"/><path d="M60 69.4 v2 q-3 3 -6 1 M60 71.4 q3 3 6 1" stroke="${INK}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+<path d="M46 67 h-14 M46 71 l-13 4 M74 67 h14 M74 71 l13 4" stroke="${c.dark}" stroke-width="1.3" stroke-linecap="round"/>`;
+    case 'frog':
+      return `<circle cx="47" cy="45" r="11" fill="${c.fur}"/><circle cx="73" cy="45" r="11" fill="${c.fur}"/>
+<ellipse cx="60" cy="63" rx="31" ry="24" fill="${c.fur}"/>
+<circle cx="47" cy="46" r="7.5" fill="#fff"/><circle cx="73" cy="46" r="7.5" fill="#fff"/>
+<circle cx="48" cy="47" r="3.8" fill="${INK}"/><circle cx="74" cy="47" r="3.8" fill="${INK}"/>
+<circle cx="49.2" cy="45.6" r="1.2" fill="#fff"/><circle cx="75.2" cy="45.6" r="1.2" fill="#fff"/>
+<ellipse cx="60" cy="72" rx="20" ry="10" fill="${c.light}" opacity=".6"/>
+<circle cx="56" cy="61" r="1.3" fill="${c.dark}"/><circle cx="64" cy="61" r="1.3" fill="${c.dark}"/>
+<path d="M42 68 q18 12 36 0" stroke="${c.dark}" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+<ellipse cx="40" cy="66" rx="5" ry="3" fill="#ff9aa8" opacity=".5"/><ellipse cx="80" cy="66" rx="5" ry="3" fill="#ff9aa8" opacity=".5"/>`;
+    case 'beaver':
+      return `<circle cx="60" cy="58" r="28" fill="${c.fur}"/>
+<ellipse cx="60" cy="71" rx="15" ry="11" fill="${c.light}"/>${eyes(56)}
+<ellipse cx="60" cy="65" rx="6" ry="4" fill="${INK}"/>
+<path d="M60 69 v3" stroke="${INK}" stroke-width="1.6"/>
+<rect x="55" y="72" width="10" height="9" rx="2" fill="#fff" stroke="${c.dark}" stroke-width="1"/><path d="M60 72 v9" stroke="${c.dark}" stroke-width="1"/>
+<path d="M44 68 h-10 M44 72 l-9 3 M76 68 h10 M76 72 l9 3" stroke="${c.dark}" stroke-width="1.2" stroke-linecap="round"/>`;
+    case 'seal':
       return `<circle cx="60" cy="58" r="29" fill="${c.fur}"/>
-<ellipse cx="60" cy="69" rx="14" ry="10" fill="${c.light}"/>${eyes}
-<ellipse cx="60" cy="64.5" rx="5.5" ry="4" fill="${INK}"/><path d="M60 68.5 v3 q-3 3 -6 1 M60 71.5 q3 3 6 1" stroke="${INK}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
-    case 'rabbit':
-      return `<circle cx="60" cy="58" r="29" fill="${c.fur}" stroke="${c.dark}" stroke-width="1.5"/>
-<ellipse cx="60" cy="69" rx="12" ry="8" fill="${c.light}"/>${eyes}
-<path d="M57 65 h6 l-3 3 z" fill="#e2798a"/><path d="M60 68 v2.5 q-2.5 3 -5 1 M60 70.5 q2.5 3 5 1" stroke="${INK}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-<rect x="57.5" y="72" width="5" height="4" rx="1" fill="#fff" stroke="${c.dark}" stroke-width="1"/>`;
-    case 'fox':
-      return `<path d="M31 50 q0 -22 29 -22 q29 0 29 22 q0 22 -29 36 q-29 -14 -29 -36 z" fill="${c.fur}"/>
-<path d="M33 60 q12 2 22 12 l5 14 q-24 -10 -27 -26 z M87 60 q-12 2 -22 12 l-5 14 q24 -10 27 -26 z" fill="${c.light}"/>${eyes}
-<ellipse cx="60" cy="76" rx="4.5" ry="3.2" fill="${INK}"/>`;
-    case 'penguin':
-      return `<circle cx="60" cy="58" r="29" fill="${c.fur}" stroke="#6f80a8" stroke-width="2"/>
-<path d="M60 44 q-6 -6 -14 -2 q-10 6 -10 20 q0 18 24 22 q24 -4 24 -22 q0 -14 -10 -20 q-8 -4 -14 2 z" fill="${c.light}"/>${eyes}
-<path d="M54 66 h12 l-6 7 z" fill="#f2a13a"/>`;
+<circle cx="44" cy="44" r="2.4" fill="${c.dark}"/><circle cx="76" cy="40" r="2" fill="${c.dark}"/><circle cx="70" cy="34" r="1.6" fill="${c.dark}"/>
+<circle cx="49" cy="58" r="5" fill="${INK}"/><circle cx="71" cy="58" r="5" fill="${INK}"/>
+<circle cx="50.8" cy="56.2" r="1.7" fill="#fff"/><circle cx="72.8" cy="56.2" r="1.7" fill="#fff"/>
+<circle cx="55" cy="70" r="6.5" fill="${c.light}"/><circle cx="65" cy="70" r="6.5" fill="${c.light}"/>
+<ellipse cx="60" cy="65" rx="4.5" ry="3.2" fill="${INK}"/>
+<circle cx="53" cy="70" r=".9" fill="${c.dark}"/><circle cx="56" cy="72.5" r=".9" fill="${c.dark}"/><circle cx="64" cy="72.5" r=".9" fill="${c.dark}"/><circle cx="67" cy="70" r=".9" fill="${c.dark}"/>
+<path d="M50 70 h-14 M50 73 l-12 4 M70 70 h14 M70 73 l12 4" stroke="${c.dark}" stroke-width="1.2" stroke-linecap="round"/>`;
+    case 'parrot':
+      return `<path d="M58 30 q-6 -14 4 -18 q-2 8 4 14 z" fill="${c.inner}"/><path d="M62 30 q2 -14 12 -14 q-6 6 -4 16 z" fill="#f2b632"/>
+<circle cx="60" cy="58" r="29" fill="${c.fur}"/>
+<ellipse cx="60" cy="62" rx="20" ry="17" fill="${c.light}"/>
+<circle cx="49" cy="56" r="6.5" fill="#fff"/><circle cx="71" cy="56" r="6.5" fill="#fff"/>${eyes(56)}
+<path d="M53 62 q7 -6 14 0 q2 10 -7 16 q-1 -8 -7 -16 z" fill="#f29a33"/><path d="M53 62 q7 -4 14 0" stroke="#c96f12" stroke-width="1.2" fill="none"/>
+<path d="M55 70 q5 4 9 -1" stroke="#c96f12" stroke-width="1.2" fill="none"/>`;
+    case 'wolf':
+      return `<path d="M30 54 q0 -26 30 -26 q30 0 30 26 q0 14 -8 22 q-10 10 -22 12 q-12 -2 -22 -12 q-8 -8 -8 -22 z" fill="${c.fur}"/>
+<path d="M31 58 l-5 8 l8 -1 l-3 7 l9 -3 q-6 -4 -9 -11 z M89 58 l5 8 l-8 -1 l3 7 l-9 -3 q6 -4 9 -11 z" fill="${c.fur}"/>
+<path d="M44 64 q16 -10 32 0 q-2 18 -16 22 q-14 -4 -16 -22 z" fill="${c.light}"/>
+<path d="M50 50 l-8 -4 M70 50 l8 -4" stroke="${c.dark}" stroke-width="2.4" stroke-linecap="round"/>
+${eyes()}<ellipse cx="60" cy="69" rx="5.5" ry="3.8" fill="${INK}"/>
+<path d="M60 72.5 v3 q-3 3 -6 1 M60 75.5 q3 3 6 1" stroke="${INK}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`;
+    case 'giraffe':
+      return `<ellipse cx="60" cy="56" rx="25" ry="27" fill="${c.fur}"/>
+<path d="M40 44 q4 -4 8 0 q-2 5 -8 0 z M72 40 q5 -3 9 1 q-4 5 -9 -1 z M58 34 q4 -3 7 0 q-3 4 -7 0 z" fill="${c.dark}" opacity=".85"/>
+<ellipse cx="60" cy="72" rx="17" ry="13" fill="${c.light}"/>${eyes(55)}
+<ellipse cx="54" cy="70" rx="2" ry="1.5" fill="${c.dark}"/><ellipse cx="66" cy="70" rx="2" ry="1.5" fill="${c.dark}"/>
+${smile(77)}`;
     default:
       return '';
   }
 }
 
 function body(animal, c) {
-  const torso = `<path d="M30 120 q0 -32 30 -32 q30 0 30 32 z" fill="${c.fur}"/>`;
-  if (animal === 'penguin') return `<path d="M30 120 q0 -32 30 -32 q30 0 30 32 z" fill="${c.fur}" stroke="#6f80a8" stroke-width="2"/><path d="M42 120 q0 -24 18 -24 q18 0 18 24 z" fill="${c.light}"/>`;
-  if (animal === 'rabbit') return `<path d="M30 120 q0 -32 30 -32 q30 0 30 32 z" fill="${c.fur}" stroke="${c.dark}" stroke-width="1.5"/>`;
-  return `${torso}<path d="M46 120 q0 -20 14 -20 q14 0 14 20 z" fill="${c.light}" opacity=".7"/>`;
+  const torso = (fill, extra = '') => `<path d="M30 120 q0 -32 30 -32 q30 0 30 32 z" fill="${fill}" ${extra}/>`;
+  switch (animal) {
+    case 'man':
+    case 'woman':
+      return `<rect x="53" y="80" width="14" height="12" fill="${c.fur}"/>${torso(c.shirt)}<path d="M52 89 q8 7 16 0" stroke="${c.fur}" stroke-width="5" fill="none"/>`;
+    case 'giraffe':
+      return `<path d="M48 76 h24 l4 28 h-32 z" fill="${c.fur}"/>${torso(c.fur)}
+<path d="M51 86 q5 -3 8 1 q-3 4 -8 -1 z M63 95 q5 -3 8 1 q-4 4 -8 -1 z M40 108 q6 -4 10 1 q-5 5 -10 -1 z M70 110 q6 -3 9 2 q-5 4 -9 -2 z" fill="${c.dark}" opacity=".85"/>`;
+    case 'frog':
+      return `${torso(c.fur)}<path d="M44 120 q0 -20 16 -20 q16 0 16 20 z" fill="${c.light}" opacity=".7"/>`;
+    case 'parrot':
+      return `${torso(c.fur)}<path d="M30 120 q2 -24 18 -30 q-4 14 -2 30 z M90 120 q-2 -24 -18 -30 q4 14 2 30 z" fill="#2e6fd8"/><path d="M48 120 q0 -18 12 -20 q12 2 12 20 z" fill="${c.light}" opacity=".8"/>`;
+    case 'seal':
+      return `${torso(c.fur)}<path d="M28 116 q-2 -14 10 -18 q-2 10 2 20 z M92 116 q2 -14 -10 -18 q2 10 -2 20 z" fill="${c.dark}"/><path d="M46 120 q0 -20 14 -20 q14 0 14 20 z" fill="${c.light}" opacity=".7"/>`;
+    default:
+      return `${torso(c.fur)}<path d="M46 120 q0 -20 14 -20 q14 0 14 20 z" fill="${c.light}" opacity=".7"/>`;
+  }
 }
 
 function outfit(id) {
@@ -220,7 +303,13 @@ function capeBack(id) {
   return id === 'cape' ? `<path d="M22 120 q4 -34 38 -34 q34 0 38 34 z" fill="#d83a2e"/>` : '';
 }
 
-function face(id) {
+function face(id, animal) {
+  const dy = FIT[animal]?.face ?? 0;
+  const g = (s) => (s && dy ? `<g transform="translate(0 ${dy})">${s}</g>` : s);
+  return g(faceArt(id));
+}
+
+function faceArt(id) {
   switch (id) {
     case 'blush':
       return `<ellipse cx="42" cy="66" rx="5.5" ry="3.2" fill="#ff8fa3" opacity=".7"/><ellipse cx="78" cy="66" rx="5.5" ry="3.2" fill="#ff8fa3" opacity=".7"/>`;
@@ -239,8 +328,7 @@ function face(id) {
 }
 
 function hat(id, animal) {
-  // 토끼는 귀가 길어서 모자를 조금 낮게 쓴다
-  const y = animal === 'rabbit' ? 4 : 0;
+  const y = FIT[animal]?.hat ?? 0;
   const g = (s) => `<g transform="translate(0 ${y})">${s}</g>`;
   switch (id) {
     case 'beanie':
@@ -318,7 +406,7 @@ export function renderAvatar(value, { size = 120, round = false, title = '' } = 
     body(av.animal, c),
     outfit(av.outfit),
     head(av.animal, c),
-    face(av.face),
+    face(av.face, av.animal),
     hat(av.hat, av.animal),
   ].join('');
   const shape = round ? `<circle cx="60" cy="60" r="60"/>` : `<rect width="120" height="120" rx="24"/>`;
