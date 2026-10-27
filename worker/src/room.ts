@@ -32,11 +32,10 @@ const IDLE_MS = 15 * 60 * 1000;
 /** 사람이 접속해 있어도 이 시간 넘게 아무 행동이 없으면 지운다. */
 const ABANDON_MS = 2 * 60 * 60 * 1000;
 
-/** 관전자는 playerId가 null. 로그인한 관전자는 userId·nickname이 있다 (야유에 포인트를 쓴다). */
+/** 관전자는 playerId가 null. 로그인한 관전자는 userId가 있다 (야유에 포인트를 쓴다). */
 interface Attachment {
   playerId: string | null;
   userId?: string;
-  nickname?: string;
 }
 
 const WATCH_TAG = 'watch';
@@ -302,7 +301,7 @@ export class YachtRoom extends DurableObject<Env> {
       if (typeof data.token !== 'string' || !/^[A-Za-z0-9_-]{20,100}$/.test(data.token)) return;
       const user = await userFromToken(this.env, data.token);
       if (!user) return;
-      ws.serializeAttachment({ playerId: null, userId: user.id, nickname: user.nickname } satisfies Attachment);
+      ws.serializeAttachment({ playerId: null, userId: user.id } satisfies Attachment);
       return;
     }
 
@@ -340,7 +339,8 @@ export class YachtRoom extends DurableObject<Env> {
       } catch {
         // 무시
       }
-      this.sendAll({ type: 'jeer', action, by: att.nickname ?? '', ...target });
+      // 누가 던졌는지는 보내지 않는다 (익명).
+      this.sendAll({ type: 'jeer', action, ...target });
     }
   }
 

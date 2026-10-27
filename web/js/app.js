@@ -621,7 +621,8 @@ function showJeer(msg) {
   const t = watchTarget(msg);
   const j = JEERS[msg.action];
   if (!t || !j) return;
-  if (msg.by) toast(`${msg.by}님이 ${t.mine && room.view?.mode !== '2v2' ? '나' : t.name}에게 ${j.verb}`);
+  // 누가 던졌는지는 알 수 없다 (서버도 보내지 않는다).
+  toast(`관전석에서 ${t.mine && room.view?.mode !== '2v2' ? '나' : t.name}에게 ${j.verb}`);
   if (t.mine) navigator.vibrate?.(msg.action === 'hammer' ? [30, 40, 60] : 80);
 
   const box = el('div', `jeer-fx jeer-${msg.action} ${t.cls}`);
