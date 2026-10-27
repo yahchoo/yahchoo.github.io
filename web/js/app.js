@@ -20,7 +20,7 @@ import {
   onAccountChange, refreshMe, saveProfile, updatePoints,
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
-import { SCORE_RATE_PERCENT, scorePoints } from './points.js';
+import { scorePoints } from './points.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -790,7 +790,7 @@ function renderSoloReward(box) {
   if (solo.claimable && loginAvailable() && !currentUser()) {
     const wrap = el('div', 'reward');
     wrap.append(el('span', 'points-chip', `+${scorePoints(solo.total).toLocaleString()} 포인트`));
-    wrap.append(el('small', '', `로그인하면 이 판 점수의 ${SCORE_RATE_PERCENT}%를 포인트로 받고, 닉네임과 아바타로 랭킹에 올라가요`));
+    wrap.append(el('small', '', '로그인하면 이 판 포인트를 받고, 닉네임과 아바타로 랭킹에 올라가요'));
     const b = el('button', 'btn btn-primary wide', '로그인하고 포인트 받기');
     b.type = 'button';
     b.addEventListener('click', () => openLogin({
@@ -1418,17 +1418,13 @@ function showResult(open) {
     const base = scorePoints(myTotal);
     const bonus = myReward - base;
     const myRank = teams ? teams.find((t) => t.seats.includes(me))?.rank : players.find((p) => p.seat === me)?.rank;
-    const place = view.mode === '2v2' ? (myRank === 1 ? '이긴 팀' : '진 팀')
-      : view.mode === '1v1' ? (myRank === 1 ? '이긴 사람' : '진 사람')
-        : `${myRank}등`;
-    wrap.append(el('small', '', bonus > 0
-      ? `점수 ${myTotal}점의 ${SCORE_RATE_PERCENT}% ${base}P + ${place} 보너스 ${bonus}P`
-      : `점수 ${myTotal}점의 ${SCORE_RATE_PERCENT}%${forfeit ? ' (기권으로 끝나 보너스 없음)' : ''}`));
+    const bonusName = myRank === 1 ? '승리 보너스' : view.mode === '1v1v1' && myRank === 2 ? '2등 보너스' : '참가 보너스';
+    wrap.append(el('small', '', bonus > 0 ? `점수 ${myTotal}점 ${base}P · ${bonusName} ${bonus}P` : `점수 ${myTotal}점 ${base}P`));
     extra.append(wrap);
     refreshMe();
   } else if (view.game.rewards && !currentUser() && loginAvailable()) {
     const wrap = el('div', 'reward');
-    wrap.append(el('small', '', `로그인하면 다음 판부터 점수의 ${SCORE_RATE_PERCENT}%와 등수 보너스를 포인트로 받아 아바타를 꾸밀 수 있어요`));
+    wrap.append(el('small', '', '로그인하면 다음 판부터 포인트를 받아 아바타를 꾸밀 수 있어요'));
     extra.append(wrap);
   }
 
@@ -1726,7 +1722,7 @@ function renderClosetBar() {
     action.textContent = `${item.name} ${item.slot === 'animal' ? '열기' : '사기'} · ${item.price.toLocaleString()}P`;
     if (item.price > me.points) {
       action.disabled = true;
-      $('closet-bar-text').textContent = `포인트가 ${(item.price - me.points).toLocaleString()} 모자라요. 게임을 끝내면 점수의 ${SCORE_RATE_PERCENT}%를 받아요.`;
+      $('closet-bar-text').textContent = `포인트가 ${(item.price - me.points).toLocaleString()} 모자라요. 게임을 끝내면 포인트를 받아요.`;
     } else {
       $('closet-bar-text').textContent = `사면 ${(me.points - item.price).toLocaleString()}P가 남아요`;
     }
