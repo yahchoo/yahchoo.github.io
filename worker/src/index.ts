@@ -18,6 +18,7 @@ import {
 import { HttpError, json, readJson } from './http';
 import { accountRoute, grantPoints, optionalUser, requireUser } from './account';
 import { parseAvatar } from '../../web/js/avatar.js';
+import { scorePoints } from '../../web/js/points.js';
 
 export { YachtRoom };
 
@@ -178,7 +179,8 @@ async function userRank(env: Env, userId: string, since: number): Promise<{ best
  * 로그인한 계정의 판이 끝났을 때: 점수만큼 포인트를 주고 랭킹에 올린다. (몇 번 불려도 한 번만)
  */
 async function settleUserGame(env: Env, row: GameRow, userId: string, total: number, finishedAt: number) {
-  const earned = await grantPoints(env, userId, total, 'solo', row.id);
+  const points = scorePoints(total);
+  const earned = await grantPoints(env, userId, points, 'solo', row.id);
   await env.DB.batch([
     env.DB.prepare('UPDATE solo_games SET ranked = 1 WHERE id = ? AND ranked = 0').bind(row.id),
     env.DB.prepare(
@@ -189,7 +191,7 @@ async function settleUserGame(env: Env, row: GameRow, userId: string, total: num
   const now = Date.now();
   const me = await env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(userId).first<{ points: number }>();
   return {
-    points: earned ? total : 0,
+    points: earned ? points : 0,
     balance: me?.points ?? 0,
     week: await userRank(env, userId, weekStart(now)),
     all: await userRank(env, userId, 0),

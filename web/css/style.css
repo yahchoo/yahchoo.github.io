@@ -633,6 +633,11 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
 }
 .item .none-mark { width: 72px; height: 72px; display: grid; place-items: center; color: var(--ink-soft); font-size: 13px; border: 2px dashed var(--line); border-radius: 18px; }
 .closet-help { color: var(--ink-soft); font-size: 13px; text-align: center; margin: 18px 0 6px; }
+.closet-help p { margin: 0 0 8px; }
+.closet-help strong { color: var(--ink); }
+.bonus-table { margin: 0 auto 4px; border-collapse: collapse; font-size: 13px; }
+.bonus-table th { text-align: left; padding: 3px 10px 3px 0; color: var(--ink); font-weight: 700; }
+.bonus-table td { padding: 3px 8px; text-align: left; font-variant-numeric: tabular-nums; }
 .closet-logout { display: block; margin: 0 auto; font-size: 14px; }
 .closet-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;

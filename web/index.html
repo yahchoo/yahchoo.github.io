@@ -117,7 +117,14 @@
       </div>
       <div class="tabs slot-tabs" role="tablist" aria-label="꾸밀 부분" id="slot-tabs"></div>
       <div class="item-grid" id="item-grid" role="list"></div>
-      <p class="closet-help">게임 한 판을 끝내면 점수만큼 포인트를 받아요. 같이 하기에서 1등을 하면 50포인트를 더 받아요.</p>
+      <div class="closet-help">
+        <p>게임 한 판을 끝내면 <strong>점수의 10%</strong>를 포인트로 받아요. 같이 하기는 끝까지 하면 등수 보너스를 더 받아요.</p>
+        <table class="bonus-table">
+          <tr><th>1:1</th><td>이긴 사람 +10</td><td>진 사람 +1</td><td></td></tr>
+          <tr><th>1:1:1</th><td>1등 +15</td><td>2등 +5</td><td>3등 +1</td></tr>
+          <tr><th>2:2</th><td>이긴 팀 +20</td><td>진 팀 +5</td><td></td></tr>
+        </table>
+      </div>
       <button class="link closet-logout" id="logout">로그아웃</button>
     </div>
     <div class="closet-bar" id="closet-bar" hidden>
@@ -239,7 +246,7 @@
     <div class="sheet-card login-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
       <div class="login-avatars" aria-hidden="true" id="login-avatars"></div>
       <h2 id="login-title">로그인하고 아바타 꾸미기</h2>
-      <p class="login-lead" id="login-lead">게임 한 판을 끝낼 때마다 점수만큼 포인트를 받아요. 포인트로 동물 캐릭터를 꾸미고, 랭킹에는 닉네임과 아바타로 올라가요.</p>
+      <p class="login-lead" id="login-lead">게임 한 판을 끝낼 때마다 점수의 10%를 포인트로 받아요. 포인트로 동물 캐릭터를 꾸미고, 랭킹에는 닉네임과 아바타로 올라가요.</p>
       <div class="google-btn" id="google-btn"></div>
       <button class="btn btn-secondary wide" id="dev-login" hidden>개발용 로그인 (localhost)</button>
       <p class="form-error" id="login-error" role="alert"></p>

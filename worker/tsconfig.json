@@ -11,5 +11,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src", "test", "../web/js/rules.js"]
+  "include": ["src", "test", "../web/js/rules.js", "../web/js/points.js"]
 }

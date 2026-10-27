@@ -5,6 +5,7 @@
 //
 // 2vs2는 각자 자기 점수판을 채우고 같은 팀 두 사람의 총점을 더해 겨룬다. 순서는 팀을 번갈아(A1 B1 A2 B2).
 
+import { placeBonus, scorePoints } from '../../web/js/points.js';
 import {
   DICE_COUNT,
   ROLLS_PER_TURN,
@@ -51,8 +52,6 @@ export interface Player {
   avatar?: unknown;
 }
 
-/** 같이 하기에서 이긴 쪽(공동 1등 포함)이 점수에 더해 받는 포인트. 끝까지 했을 때만. */
-export const WIN_BONUS = 50;
 
 export interface Reward {
   playerId: string;
@@ -450,7 +449,7 @@ function rankBy<T extends { total: number; left: boolean; rank: number }>(items:
 
 /**
  * 끝난 게임의 포인트를 정한다. 로그인했고 기권하지 않은 사람은 자기 총점만큼,
- * 끝까지 한 게임에서 1등(2:2는 이긴 팀)이면 WIN_BONUS를 더 받는다. 한 번 정하면 바뀌지 않는다.
+ * 점수의 10% + 끝까지 한 게임이면 등수 보너스(2:2는 팀 등수). 규칙은 web/js/points.js. 한 번 정하면 바뀌지 않는다.
  */
 export function decideRewards(state: RoomState): Reward[] {
   const game = state.game;
@@ -458,17 +457,13 @@ export function decideRewards(state: RoomState): Reward[] {
   if (!game.rewards) {
     const { players, teams } = standings(state);
     const complete = game.endReason === 'complete';
-    const winnerSeats = new Set<number>(
-      teams
-        ? teams.filter((t) => t.rank === 1 && !t.left).flatMap((t) => t.seats)
-        : players.filter((p) => p.rank === 1 && !p.left).map((p) => p.seat),
-    );
     game.rewards = {};
     for (const p of players) {
       const player = state.players[p.seat];
       if (!player?.userId || player.left) continue;
-      const bonus = complete && winnerSeats.has(p.seat) ? WIN_BONUS : 0;
-      game.rewards[player.id] = p.total + bonus;
+      const rank = teams ? teams.find((t) => t.seats.includes(p.seat))?.rank ?? 0 : p.rank;
+      const bonus = complete ? placeBonus(state.mode, rank) : 0;
+      game.rewards[player.id] = scorePoints(p.total) + bonus;
     }
   }
   return Object.entries(game.rewards).flatMap(([playerId, amount]) => {
