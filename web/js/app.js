@@ -21,6 +21,7 @@ import {
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
 import { scorePoints } from './points.js';
+import { fillAds } from './ads.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -33,6 +34,7 @@ function show(screen) {
   for (const id of ['home', 'online', 'lobby', 'game', 'ranking', 'closet']) $(id).hidden = id !== screen;
   $('flash').hidden = true;
   window.scrollTo(0, 0);
+  requestAnimationFrame(() => fillAds(screen));
 }
 
 function openOverlay(id) {

@@ -3,3 +3,7 @@
 // GOOGLE_CLIENT_ID가 비어 있으면 로그인 버튼을 보여 주지 않는다.
 export const API_BASE = '';
 export const GOOGLE_CLIENT_ID = '';
+// 구글 애드센스: 게시자 ID(ca-pub-…)와 광고 단위 번호. 비어 있으면 광고를 띄우지 않는다.
+// ADSENSE_SLOTS 예: { "default": "1234567890", "home": "…", "ranking": "…", "online": "…", "lobby": "…" }
+export const ADSENSE_CLIENT = '';
+export const ADSENSE_SLOTS = {};

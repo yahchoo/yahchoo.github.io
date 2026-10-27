@@ -147,6 +147,9 @@ jobs:
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL || needs.deploy-worker.outputs.url }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || '994205737094-50gr21rv5gd4jmrk3drgq3462k6k2rj7.apps.googleusercontent.com' }}
+          # 애드센스: 저장소 변수 ADSENSE_CLIENT(ca-pub-…), ADSENSE_SLOTS(JSON). 없으면 광고 없이 배포한다.
+          ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT || '' }}
+          ADSENSE_SLOTS: ${{ vars.ADSENSE_SLOTS || '{}' }}
         run: |
           mkdir -p _site
           cp -r web/. _site/
@@ -155,7 +158,17 @@ jobs:
             GOOGLE_CLIENT_ID=""
           fi
           echo "서버: ${API_BASE_URL:-없음} / 구글 로그인: ${GOOGLE_CLIENT_ID:-없음}"
-          printf "export const API_BASE = '%s';\nexport const GOOGLE_CLIENT_ID = '%s';\n" "$API_BASE_URL" "$GOOGLE_CLIENT_ID" > _site/js/config.js
+          if [ -n "$ADSENSE_CLIENT" ] && ! printf '%s' "$ADSENSE_CLIENT" | grep -Eq '^ca-pub-[0-9]{10,20}$'; then
+            echo "::warning::ADSENSE_CLIENT 형식이 이상해서(ca-pub-숫자) 광고 없이 배포합니다."
+            ADSENSE_CLIENT=""
+          fi
+          if ! printf '%s' "$ADSENSE_SLOTS" | jq -e 'type == "object" and all(.[]; tostring | test("^[0-9]{6,20}$"))' > /dev/null; then
+            echo "::warning::ADSENSE_SLOTS가 올바른 JSON이 아니라 광고 없이 배포합니다."
+            ADSENSE_SLOTS='{}'
+          fi
+          ADSENSE_SLOTS=$(printf '%s' "$ADSENSE_SLOTS" | jq -c 'map_values(tostring)')
+          echo "광고: ${ADSENSE_CLIENT:-없음} $ADSENSE_SLOTS"
+          printf "export const API_BASE = '%s';\nexport const GOOGLE_CLIENT_ID = '%s';\nexport const ADSENSE_CLIENT = '%s';\nexport const ADSENSE_SLOTS = %s;\n" "$API_BASE_URL" "$GOOGLE_CLIENT_ID" "$ADSENSE_CLIENT" "$ADSENSE_SLOTS" > _site/js/config.js
           cat _site/js/config.js
       - uses: actions/upload-pages-artifact@v3
         with:

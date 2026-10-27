@@ -1,0 +1,46 @@
+// 웹 광고(구글 애드센스) 자리.
+// config.js의 ADSENSE_CLIENT(ca-pub-…)와 광고 단위 번호(ADSENSE_SLOTS)가 있을 때만 광고를 불러온다.
+// 값이 없으면 광고 자리는 숨겨 둔 채로 아무것도 불러오지 않는다.
+// 광고는 버튼을 잘못 누르기 쉬운 게임 화면·점수판·팝업에는 두지 않고, 화면 맨 아래에만 둔다.
+import * as config from './config.js';
+
+const CLIENT = /^ca-pub-\d{10,20}$/.test(config.ADSENSE_CLIENT ?? '') ? config.ADSENSE_CLIENT : '';
+const SLOTS = config.ADSENSE_SLOTS && typeof config.ADSENSE_SLOTS === 'object' ? config.ADSENSE_SLOTS : {};
+
+let scriptAdded = false;
+function addScript() {
+  if (scriptAdded) return;
+  scriptAdded = true;
+  const s = document.createElement('script');
+  s.async = true;
+  s.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${CLIENT}`;
+  s.crossOrigin = 'anonymous';
+  document.head.append(s);
+}
+
+/** 화면이 보일 때 그 화면의 광고 자리를 한 번 채운다. (숨겨진 자리는 크기가 0이라 채울 수 없다) */
+export function fillAds(screenId) {
+  if (!CLIENT) return;
+  const root = document.getElementById(screenId);
+  if (!root) return;
+  for (const slot of root.querySelectorAll('.ad-slot:not([data-filled])')) {
+    const unit = String(SLOTS[slot.dataset.ad] ?? SLOTS.default ?? '');
+    if (!/^\d{6,20}$/.test(unit)) continue;
+    addScript();
+    slot.hidden = false;
+    slot.dataset.filled = '1';
+    const ins = document.createElement('ins');
+    ins.className = 'adsbygoogle';
+    ins.style.display = 'block';
+    ins.dataset.adClient = CLIENT;
+    ins.dataset.adSlot = unit;
+    ins.dataset.adFormat = 'auto';
+    ins.dataset.fullWidthResponsive = 'true';
+    slot.append(ins);
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch {
+      // 광고 차단 등: 자리만 남는다
+    }
+  }
+}
