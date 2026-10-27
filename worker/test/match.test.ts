@@ -13,7 +13,9 @@ import {
   createRoom,
   disconnect,
   expireTurn,
+  hasOpenSeat,
   hold,
+  isSeated,
   isRoomCode,
   join,
   leave,
@@ -373,5 +375,44 @@ describe('포인트', () => {
     const text = JSON.stringify(viewFor(s, 'p1', T0));
     expect(text).not.toContain('secret-user');
     expect(text).toContain('fox');
+  });
+});
+
+describe('관전', () => {
+  it('자리가 다 찼거나 게임이 시작하면 빈 자리가 없다', () => {
+    const { s } = room('1v1', 1);
+    expect(hasOpenSeat(s)).toBe(true);
+    join(s, { name: 'P1', newId: 'p1' }, T0);
+    expect(hasOpenSeat(s)).toBe(false);
+    leave(s, 'p1', T0);
+    expect(hasOpenSeat(s)).toBe(true);
+    join(s, { name: 'P1', newId: 'p1' }, T0);
+    start(s, 'p0', T0, first);
+    expect(hasOpenSeat(s)).toBe(false);
+  });
+
+  it('참가자는 재접속하면 관전이 아니라 자기 자리로, 기권한 사람은 관전', () => {
+    const { s } = room('1v1v1', 3);
+    start(s, 'p0', T0, first);
+    expect(isSeated(s, 'p1')).toBe(true);
+    expect(isSeated(s, null)).toBe(false);
+    expect(isSeated(s, 'nobody')).toBe(false);
+    leave(s, 'p2', T0);
+    expect(isSeated(s, 'p2')).toBe(false);
+  });
+
+  it('관전 화면은 내 자리가 없고 점수판과 주사위는 그대로 보인다', () => {
+    const { s } = room('2v2', 4);
+    start(s, 'p0', T0, first);
+    roll(s, current(s), T0, first);
+    const v = viewFor(s, null, T0, 3);
+    expect(v.you).toBe(-1);
+    expect(v.spectator).toBe(true);
+    expect(v.watchers).toBe(3);
+    expect(v.open).toBe(false);
+    expect(v.game!.dice).toEqual(s.game!.dice);
+    expect(v.game!.sheets).toHaveLength(4);
+    expect(JSON.stringify(v)).not.toContain('"p0"');
+    expect(viewFor(s, 'p0', T0).spectator).toBe(false);
   });
 });

@@ -213,7 +213,7 @@ $('game-exit').addEventListener('click', () => {
       showHome();
     }
   } else if (ui.kind === 'online') {
-    if (room.view?.phase === 'playing') {
+    if (room.view?.phase === 'playing' && !room.view.spectator) {
       confirmExit('게임 중에 나가면 기권이에요. 나갈까요?', leaveRoom);
     } else {
       leaveRoom();
@@ -312,6 +312,8 @@ function renderGame(m) {
   } else if (m.finished) {
     turn.append(el('span', '', '게임 끝'));
   }
+  if (m.watching) turn.append(el('span', 'tag watch', '관전 중'));
+  else if (m.watchers > 0) turn.append(el('span', 'tag watch', `관전 ${m.watchers}`));
 
   // 주사위
   const rolled = ui.lastRollSeq !== null && m.rollSeq > ui.lastRollSeq;
@@ -352,6 +354,7 @@ function renderGame(m) {
   const label = $('roll-label');
   btn.disabled = rolling || !(m.canRoll || m.finished);
   if (m.finished) label.textContent = '결과 보기';
+  else if (m.watching) label.textContent = '관전 중';
   else if (!m.turn?.me) label.textContent = '기다리는 중';
   else if (m.rollsLeft === ROLLS_PER_TURN) label.textContent = '굴리기';
   else if (m.rollsLeft > 0) label.textContent = '다시 굴리기';
@@ -1078,6 +1081,12 @@ function leaveRoom() {
 
 $('lobby-leave').addEventListener('click', leaveRoom);
 $('start-game').addEventListener('click', () => room.conn?.send({ type: 'start' }));
+$('sit-down').addEventListener('click', () => {
+  if (!room.conn) return;
+  ui.sitRequested = true;
+  $('sit-down').disabled = true;
+  room.conn.sit();
+});
 /* 친구 초대: 휴대폰·PC의 기본 공유 창(카카오톡, 메시지, SNS 등)을 먼저 쓰고, 없으면 자체 공유 창을 띄운다. */
 function inviteLink() {
   const url = new URL(location.href);
@@ -1146,7 +1155,17 @@ function playerCls(view, seat) {
 function onRoomState(view) {
   const prev = room.view;
   room.view = view;
-  if (view.you < 0) return;
+  if (view.you < 0 && !view.spectator) return;
+
+  // 관전으로 들어왔거나 자리에 앉았을 때 알려 준다.
+  if (ui.sitRequested && view.spectator) {
+    toast('그 사이에 자리가 찼어요. 계속 관전할게요');
+  } else if (view.spectator && !prev?.spectator) {
+    toast(view.phase === 'lobby' ? '방이 꽉 차서 관전으로 들어왔어요' : '게임이 이미 시작해서 관전으로 들어왔어요');
+  } else if (!view.spectator && prev?.spectator) {
+    toast('자리에 앉았어요');
+  }
+  ui.sitRequested = false;
 
   if (view.phase === 'lobby') {
     closeOverlay('result');
@@ -1255,6 +1274,8 @@ function onRoomState(view) {
     teams,
     columns,
     waitingText: finished ? '' : `${nameOf(g.turn)}님이 굴리는 중이에요`,
+    watching: !!view.spectator,
+    watchers: view.watchers ?? 0,
   };
   renderGame(m);
 
@@ -1271,7 +1292,8 @@ function renderLobby(view) {
   $('lobby-code').textContent = view.code;
   const box = $('lobby-seats');
   box.replaceChildren();
-  const isHost = view.host === view.you;
+  const watching = !!view.spectator;
+  const isHost = !watching && view.host === view.you;
 
   const seatEl = (seat) => {
     const p = view.players[seat];
@@ -1301,7 +1323,7 @@ function renderLobby(view) {
       for (const p of members) col.append(seatEl(p.seat));
       for (let i = members.length; i < 2; i++) col.append(emptyEl());
       const mine = view.players[view.you]?.team === team;
-      if (!mine && members.length < 2) {
+      if (!watching && !mine && members.length < 2) {
         const b = el('button', 'btn btn-ghost', '이 팀으로');
         b.type = 'button';
         b.addEventListener('click', () => room.conn?.send({ type: 'team', team }));
@@ -1322,11 +1344,16 @@ function renderLobby(view) {
   else if (!balanced) note = '팀마다 두 명씩 맞춰 주세요';
   else if (isHost) note = '모두 모였어요. 시작해 볼까요?';
   else note = '모두 모였어요. 방장이 시작하면 게임이 시작돼요.';
+  if (watching) note = missing > 0 ? `관전 중이에요. 빈 자리가 ${missing}개 있어서 앉을 수 있어요.` : '관전 중이에요. 게임이 시작되면 점수판을 같이 볼 수 있어요.';
+  else if (view.watchers > 0) note += ` (관전 ${view.watchers}명)`;
   $('lobby-note').textContent = note;
 
   const start = $('start-game');
   start.hidden = !isHost;
   start.disabled = missing > 0 || !balanced;
+  const sit = $('sit-down');
+  sit.hidden = !(watching && view.open);
+  sit.disabled = false;
 }
 
 /* ---------------------------------------------------------------- 결과 */
@@ -1410,7 +1437,7 @@ function showResult(open) {
     }
   }
 
-  const myReward = view.game.rewards?.[me];
+  const myReward = view.spectator ? undefined : view.game.rewards?.[me];
   if (myReward !== undefined) {
     const wrap = el('div', 'reward');
     wrap.append(el('span', 'points-chip', `+${myReward.toLocaleString()} 포인트`));
@@ -1422,14 +1449,17 @@ function showResult(open) {
     wrap.append(el('small', '', bonus > 0 ? `점수 ${myTotal}점 ${base}P · ${bonusName} ${bonus}P` : `점수 ${myTotal}점 ${base}P`));
     extra.append(wrap);
     refreshMe();
-  } else if (view.game.rewards && !currentUser() && loginAvailable()) {
+  } else if (!view.spectator && view.game.rewards && !currentUser() && loginAvailable()) {
     const wrap = el('div', 'reward');
     wrap.append(el('small', '', '로그인하면 다음 판부터 포인트를 받아 아바타를 꾸밀 수 있어요'));
     extra.append(wrap);
   }
 
   actionBtn('점수판 보기', 'btn-ghost', viewSheet);
-  if (view.host === me) {
+  if (view.spectator) {
+    actionBtn('나가기', 'btn-secondary', leaveRoom);
+    $('result-note').textContent = '관전 중이에요. 방장이 다시 하기를 누르면 대기실에서 빈 자리에 앉을 수 있어요';
+  } else if (view.host === me) {
     actionBtn('다시 하기', 'btn-primary', () => room.conn?.send({ type: 'rematch' }));
     $('result-note').textContent = '';
   } else {

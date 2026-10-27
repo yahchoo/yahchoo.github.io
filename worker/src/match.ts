@@ -27,6 +27,8 @@ export const AWAY_TURN_MS = 10_000;
 export const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const ROOM_CODE_LENGTH = 4;
 export const NAME_MAX = 8;
+/** 한 방에 관전자는 이만큼까지. */
+export const MAX_WATCHERS = 30;
 
 export type Mode = '1v1' | '1v1v1' | '2v2';
 export const MODES: Record<Mode, { seats: number; teams: boolean }> = {
@@ -191,6 +193,16 @@ export function join(
   state.updatedAt = now;
   ensureHost(state);
   return args.newId;
+}
+
+/** 이 사람이 이미 이 방 참가자(기권 안 함)인지. 재접속이면 관전이 아니라 자기 자리로 돌아간다. */
+export function isSeated(state: RoomState, playerId: string | null | undefined): boolean {
+  return !!playerId && state.players.some((p) => p.id === playerId && !p.left);
+}
+
+/** 새로 자리에 앉을 수 있는지. 게임이 시작됐거나 자리가 다 찼으면 관전으로 들어온다. */
+export function hasOpenSeat(state: RoomState): boolean {
+  return state.phase === 'lobby' && state.players.length < MODES[state.mode].seats;
 }
 
 /** 2vs2 대기실에서 팀 바꾸기. */
@@ -511,8 +523,11 @@ export function standings(state: RoomState): { players: Standing[]; teams: TeamS
   return { players, teams };
 }
 
-/** 한 참가자에게 보낼 화면 상태. 다른 사람의 playerId(재접속 열쇠)는 보내지 않는다. */
-export function viewFor(state: RoomState, playerId: string, now: number) {
+/**
+ * 한 참가자에게 보낼 화면 상태. 다른 사람의 playerId(재접속 열쇠)는 보내지 않는다.
+ * playerId가 null이면 관전자 화면 (you = -1).
+ */
+export function viewFor(state: RoomState, playerId: string | null, now: number, watchers = 0) {
   const seatOf = (id: string) => state.players.findIndex((p) => p.id === id);
   const game = state.game;
   return {
@@ -522,7 +537,10 @@ export function viewFor(state: RoomState, playerId: string, now: number) {
     phase: state.phase,
     match: state.match,
     serverNow: now,
-    you: seatOf(playerId),
+    you: playerId ? seatOf(playerId) : -1,
+    spectator: !playerId,
+    watchers,
+    open: hasOpenSeat(state),
     host: state.hostId ? seatOf(state.hostId) : -1,
     seats: MODES[state.mode].seats,
     players: state.players.map((p, seat) => ({

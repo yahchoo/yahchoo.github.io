@@ -9,8 +9,11 @@ import {
   createRoom,
   decideRewards,
   disconnect,
+  MAX_WATCHERS,
   expireTurn,
+  hasOpenSeat,
   hold,
+  isSeated,
   isMode,
   join,
   leave,
@@ -27,9 +30,12 @@ const IDLE_MS = 15 * 60 * 1000;
 /** 사람이 접속해 있어도 이 시간 넘게 아무 행동이 없으면 지운다. */
 const ABANDON_MS = 2 * 60 * 60 * 1000;
 
+/** 관전자는 playerId가 null. */
 interface Attachment {
-  playerId: string;
+  playerId: string | null;
 }
+
+const WATCH_TAG = 'watch';
 
 /** 0 이상 1 미만의 암호학적 난수. 주사위는 서버에서만 굴린다. */
 function secureRandom(): number {
@@ -72,13 +78,19 @@ export class YachtRoom extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(next);
   }
 
-  private broadcast(state: RoomState): void {
+  private watcherCount(except?: WebSocket): number {
+    return this.ctx.getWebSockets(WATCH_TAG).filter((s) => s !== except && s.readyState === WebSocket.OPEN).length;
+  }
+
+  private broadcast(state: RoomState, except?: WebSocket): void {
     const now = Date.now();
+    const watchers = this.watcherCount(except);
     for (const ws of this.ctx.getWebSockets()) {
+      if (ws === except) continue;
       const att = ws.deserializeAttachment() as Attachment | null;
       if (!att) continue;
       try {
-        ws.send(JSON.stringify(viewFor(state, att.playerId, now)));
+        ws.send(JSON.stringify(viewFor(state, att.playerId, now, watchers)));
       } catch {
         // 이미 닫힌 연결
       }
@@ -121,6 +133,20 @@ export class YachtRoom extends DurableObject<Env> {
       const state = await this.load();
       if (!state) return YachtRoom.reject('없는 방이에요. 코드를 확인해 주세요', 4004);
 
+      // 자리가 없거나 게임이 이미 시작했으면(또는 관전을 원하면) 관전자로 들어온다.
+      const requestedId = url.searchParams.get('playerId');
+      const wantsWatch = url.searchParams.get('watch') === '1';
+      if (!isSeated(state, requestedId) && (wantsWatch || !hasOpenSeat(state))) {
+        if (this.watcherCount() >= MAX_WATCHERS) return YachtRoom.reject('관전하는 사람이 너무 많아요. 잠시 뒤에 다시 들어와 주세요', 4009);
+        const pair = new WebSocketPair();
+        const [client, server] = [pair[0], pair[1]];
+        this.ctx.acceptWebSocket(server, [WATCH_TAG]);
+        server.serializeAttachment({ playerId: null } satisfies Attachment);
+        server.send(JSON.stringify({ type: 'welcome', playerId: null, spectator: true }));
+        this.broadcast(state);
+        return new Response(null, { status: 101, webSocket: client });
+      }
+
       let playerId: string;
       try {
         playerId = join(
@@ -162,7 +188,9 @@ export class YachtRoom extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
-    if (!att || typeof message !== 'string') return;
+    // 관전자는 보기만 한다.
+    if (!att || !att.playerId || typeof message !== 'string') return;
+    const playerId = att.playerId;
 
     let data: Record<string, unknown>;
     try {
@@ -191,29 +219,29 @@ export class YachtRoom extends DurableObject<Env> {
             YachtRoom.sendError(ws, '로그인이 만료됐어요. 이번 판은 포인트 없이 진행돼요');
             return;
           }
-          attachAccount(state, att.playerId, user.id, parseAvatar(user.avatar), now);
+          attachAccount(state, playerId, user.id, parseAvatar(user.avatar), now);
           break;
         }
         case 'team':
-          setTeam(state, att.playerId, data.team, now);
+          setTeam(state, playerId, data.team, now);
           break;
         case 'start':
-          start(state, att.playerId, now, secureRandom);
+          start(state, playerId, now, secureRandom);
           break;
         case 'hold':
-          hold(state, att.playerId, data.index, data.held, now);
+          hold(state, playerId, data.index, data.held, now);
           break;
         case 'roll':
-          roll(state, att.playerId, now, secureRandom);
+          roll(state, playerId, now, secureRandom);
           break;
         case 'score':
-          score(state, att.playerId, data.category, now);
+          score(state, playerId, data.category, now);
           break;
         case 'rematch':
-          rematch(state, att.playerId, now);
+          rematch(state, playerId, now);
           break;
         case 'leave':
-          leave(state, att.playerId, now);
+          leave(state, playerId, now);
           break;
         default:
           return;
@@ -245,14 +273,22 @@ export class YachtRoom extends DurableObject<Env> {
   private async onSocketGone(ws: WebSocket): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
     if (!att) return;
+    if (!att.playerId) {
+      // 관전자가 나가면 관전 인원만 다시 알린다.
+      ws.serializeAttachment(null);
+      const state = await this.load();
+      if (state) this.broadcast(state, ws);
+      return;
+    }
+    const playerId = att.playerId;
     const stillOpen = this.ctx
-      .getWebSockets(att.playerId)
+      .getWebSockets(playerId)
       .some((s) => s !== ws && s.readyState === WebSocket.OPEN);
     if (stillOpen) return;
 
     const state = await this.load();
     if (!state) return;
-    disconnect(state, att.playerId, Date.now());
+    disconnect(state, playerId, Date.now());
     await this.save(state);
     this.broadcast(state);
   }

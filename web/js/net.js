@@ -70,6 +70,8 @@ export class RoomConnection {
     this.ws = null;
     this.pingTimer = null;
     this.retryTimer = null;
+    /** 관전 중이면 다시 연결할 때도 관전으로 들어간다. */
+    this.watching = false;
   }
 
   connect() {
@@ -83,6 +85,7 @@ export class RoomConnection {
     url.searchParams.set('name', this.name ?? '');
     const pid = load(pidKey(this.code));
     if (pid) url.searchParams.set('playerId', pid);
+    if (this.watching) url.searchParams.set('watch', '1');
 
     const ws = new WebSocket(url);
     this.ws = ws;
@@ -95,7 +98,7 @@ export class RoomConnection {
       }, 25_000);
     });
     ws.addEventListener('message', (ev) => {
-      if (ev.data === 'pong') return;
+      if (this.ws !== ws || ev.data === 'pong') return;
       let msg;
       try {
         msg = JSON.parse(ev.data);
@@ -103,6 +106,12 @@ export class RoomConnection {
         return;
       }
       if (msg.type === 'welcome') {
+        if (msg.spectator) {
+          // 관전자: 자리가 없으니 재접속 열쇠도 없다.
+          this.watching = true;
+          return;
+        }
+        this.watching = false;
         store(pidKey(this.code), msg.playerId);
         store(ACTIVE_KEY, this.code);
         // 로그인했으면 계정을 연결한다 (포인트·아바타)
@@ -135,6 +144,19 @@ export class RoomConnection {
     this.retryTimer = setTimeout(() => {
       if (!this.closed) this.connect();
     }, delay);
+  }
+
+  /** 관전하다가 빈 자리에 앉기: 관전 연결을 끊고 참가자로 다시 들어간다. */
+  sit() {
+    this.watching = false;
+    const old = this.ws;
+    this.ws = null;
+    try {
+      old?.close(1000);
+    } catch {
+      // 무시
+    }
+    this.connect();
   }
 
   send(data) {
