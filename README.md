@@ -109,7 +109,7 @@ worker/              # Cloudflare Worker
    - `CLOUDFLARE_API_TOKEN`: 2번 토큰
    - `CLOUDFLARE_ACCOUNT_ID`: 3번 ID
 5. `main`에 푸시하거나 **Actions → CI & Deploy → Run workflow**
-6. (구글 로그인) Google Cloud 콘솔에서 OAuth 클라이언트 ID(웹 애플리케이션)를 만들고, 승인된 JavaScript 원본에 `https://yahchoo.github.io`를 넣은 뒤 저장소 **변수** `GOOGLE_CLIENT_ID`에 클라이언트 ID를 넣고 다시 배포
+6. (구글 로그인) Google Cloud 프로젝트 `yahchoo`의 OAuth 클라이언트 ID(웹 애플리케이션, 승인된 JavaScript 원본 `https://yahchoo.github.io`)가 `.github/workflows/ci.yml`에 기본값으로 들어가 있음. 다른 ID를 쓰려면 저장소 **변수** `GOOGLE_CLIENT_ID`를 넣으면 그 값을 우선 사용
 
 배포할 때 D1 데이터베이스(`yacht-dice`)를 찾거나 만들고 테이블을 준비하는 것까지 자동으로 합니다. Worker 이름은 `yacht-dice-api`라서 다른 프로젝트와 같은 Cloudflare 계정을 써도 겹치지 않습니다. 시크릿이 없으면 서버 배포는 건너뛰고 웹은 혼자 하기만 되는 상태로 배포됩니다. 서버 주소를 직접 정하려면 저장소 변수 `API_BASE_URL`을 넣으세요.
 

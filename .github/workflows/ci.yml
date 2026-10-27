@@ -93,11 +93,11 @@ jobs:
         if: steps.cf.outputs.ready == 'true'
         run: npx wrangler d1 migrations apply DB --remote
 
-      # 구글 로그인: 저장소 변수 GOOGLE_CLIENT_ID가 있으면 서버에 넣는다. 없으면 로그인 없이 동작한다.
+      # 구글 로그인 클라이언트 ID (공개값). 저장소 변수 GOOGLE_CLIENT_ID가 있으면 그 값을 우선 쓴다.
       - name: Set Google client ID
         if: steps.cf.outputs.ready == 'true'
         env:
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || '994205737094-50gr21rv5gd4jmrk3drgq3462k6k2rj7.apps.googleusercontent.com' }}
         run: |
           if [ -z "$GOOGLE_CLIENT_ID" ]; then
             echo "::notice::저장소 변수 GOOGLE_CLIENT_ID가 없어 로그인 없이 배포합니다."
@@ -146,7 +146,7 @@ jobs:
       - name: Write server address
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL || needs.deploy-worker.outputs.url }}
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || '994205737094-50gr21rv5gd4jmrk3drgq3462k6k2rj7.apps.googleusercontent.com' }}
         run: |
           mkdir -p _site
           cp -r web/. _site/
