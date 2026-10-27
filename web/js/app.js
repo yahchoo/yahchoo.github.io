@@ -1529,13 +1529,46 @@ function openNickname({ after = null } = {}) {
   const me = currentUser();
   if (!me) return;
   nicknameAfter = after;
-  $('nickname-avatar').innerHTML = renderAvatar(me.avatar, { size: 96, round: true });
-  $('nickname-title').textContent = me.nicknameSet ? '닉네임 바꾸기' : '닉네임을 정해 주세요';
+  const first = !me.nicknameSet;
+  nicknameDraft = { ...me.avatar };
+  $('nickname-title').textContent = first ? '캐릭터와 닉네임을 정해 주세요' : '닉네임 바꾸기';
+  $('nickname-lead').textContent = first
+    ? '처음 쓸 캐릭터를 골라요. 다른 캐릭터는 포인트를 모아서 열 수 있어요.'
+    : '랭킹과 같이 하기에서 이 이름으로 보여요. 8글자까지예요.';
+  $('nickname-avatar').hidden = first;
+  $('pick-char').hidden = !first;
+  $('nickname-save').textContent = first ? '이대로 시작하기' : '이 닉네임 쓰기';
+  if (first) renderCharPicker();
+  else $('nickname-avatar').innerHTML = renderAvatar(me.avatar, { size: 96, round: true });
   $('nickname-input').value = me.nickname;
   $('nickname-error').textContent = '';
   openOverlay('nickname');
   $('nickname-input').focus();
   $('nickname-input').select();
+}
+
+let nicknameDraft = null;
+
+/** 처음 로그인할 때 고르는 기본 캐릭터 (무료 캐릭터) */
+function renderCharPicker() {
+  const box = $('pick-char');
+  box.replaceChildren();
+  for (const it of ITEMS.filter((i) => i.slot === 'animal' && i.price === 0)) {
+    const b = el('button', 'pick');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(nicknameDraft.animal === it.id));
+    b.setAttribute('aria-label', it.name);
+    const art = el('span', 'pick-art');
+    art.innerHTML = renderAvatar({ ...nicknameDraft, animal: it.id }, { size: 64, round: true });
+    b.append(art, el('span', 'pick-name', it.name));
+    b.addEventListener('click', () => {
+      nicknameDraft = { ...nicknameDraft, animal: it.id };
+      renderCharPicker();
+      box.querySelector('[aria-checked="true"]')?.focus();
+    });
+    box.append(b);
+  }
 }
 
 $('nickname-form').addEventListener('submit', async (ev) => {
@@ -1548,7 +1581,10 @@ $('nickname-form').addEventListener('submit', async (ev) => {
   const btn = $('nickname-save');
   btn.disabled = true;
   try {
-    await saveProfile({ nickname: name });
+    const me = currentUser();
+    const changes = { nickname: name };
+    if (me && !me.nicknameSet && nicknameDraft && nicknameDraft.animal !== me.avatar.animal) changes.avatar = nicknameDraft;
+    await saveProfile(changes);
     closeOverlay('nickname');
     const after = nicknameAfter;
     nicknameAfter = null;
@@ -1564,7 +1600,11 @@ $('nickname').addEventListener('click', (ev) => {
   if (ev.target !== $('nickname')) return;
   const me = currentUser();
   closeOverlay('nickname');
-  if (me && !me.nicknameSet) saveProfile({ nickname: me.nickname }).catch(() => {});
+  if (me && !me.nicknameSet) {
+    const changes = { nickname: me.nickname };
+    if (nicknameDraft && nicknameDraft.animal !== me.avatar.animal) changes.avatar = nicknameDraft;
+    saveProfile(changes).catch(() => {});
+  }
   const after = nicknameAfter;
   nicknameAfter = null;
   after?.();

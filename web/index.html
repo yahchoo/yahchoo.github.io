@@ -253,7 +253,8 @@
     <form class="sheet-card nickname-card" role="dialog" aria-modal="true" aria-labelledby="nickname-title" id="nickname-form" novalidate>
       <div class="nickname-avatar" id="nickname-avatar" aria-hidden="true"></div>
       <h2 id="nickname-title">닉네임을 정해 주세요</h2>
-      <p class="login-lead">랭킹과 같이 하기에서 이 이름으로 보여요. 8글자까지, 나중에 바꿀 수 있어요.</p>
+      <p class="login-lead" id="nickname-lead">랭킹과 같이 하기에서 이 이름으로 보여요. 8글자까지, 나중에 바꿀 수 있어요.</p>
+      <div class="pick-char" id="pick-char" role="radiogroup" aria-label="캐릭터" hidden></div>
       <input id="nickname-input" maxlength="8" autocomplete="nickname" aria-label="닉네임">
       <p class="form-error" id="nickname-error" role="alert"></p>
       <button class="btn btn-primary wide" type="submit" id="nickname-save">이 닉네임 쓰기</button>
