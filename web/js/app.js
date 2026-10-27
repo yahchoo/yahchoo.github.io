@@ -566,7 +566,7 @@ function actionIcon(id) {
 }
 
 const HAMMER_SVG = '<svg viewBox="0 0 80 80"><rect x="35" y="30" width="10" height="46" rx="5" fill="#f5c518" stroke="#13234a" stroke-width="3"/><rect x="8" y="6" width="64" height="30" rx="11" fill="#d83a2e" stroke="#13234a" stroke-width="3"/><rect x="8" y="6" width="14" height="30" rx="7" fill="#f5c518" stroke="#13234a" stroke-width="3"/><rect x="58" y="6" width="14" height="30" rx="7" fill="#f5c518" stroke="#13234a" stroke-width="3"/></svg>';
-const BANANA_SVG = '<svg viewBox="0 0 60 52"><path d="M30 31C22 11 8 7 3 18c10 0 19 6 23 15z" fill="#f7d433" stroke="#13234a" stroke-width="2.5" stroke-linejoin="round"/><path d="M30 31C38 11 52 7 57 18c-10 0-19 6-23 15z" fill="#f7d433" stroke="#13234a" stroke-width="2.5" stroke-linejoin="round"/><path d="M30 31c-5 9-7 15 0 18 7-3 5-9 0-18z" fill="#f0c419" stroke="#13234a" stroke-width="2.5" stroke-linejoin="round"/><ellipse cx="30" cy="31" rx="6" ry="4" fill="#fff6c9" stroke="#13234a" stroke-width="2"/><path d="M30 27v-6" stroke="#6b5313" stroke-width="3" stroke-linecap="round"/></svg>';
+const BANANA_SVG = '<svg viewBox="0 0 120 84"><ellipse cx="60" cy="66" rx="44" ry="9" fill="#13234a" opacity=".18"/><g stroke="#13234a" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><path d="M56 48 C44 43 26 43 9 52 C6 55 8 60 12 60 C26 60 42 60 56 62 Z" fill="#f7d02c"/><path d="M54 52 C42 50 28 51 16 56 C30 55 42 55 54 57 Z" fill="#fff4c2" stroke="none"/><path d="M62 48 C76 41 94 39 111 46 C114 49 112 54 108 54 C94 56 78 59 64 62 Z" fill="#f7d02c"/><path d="M64 52 C76 48 92 47 104 50 C90 51 78 53 64 57 Z" fill="#fff4c2" stroke="none"/><path d="M55 57 C51 66 46 72 38 77 C35 80 39 83 43 82 C55 77 61 70 65 59 Z" fill="#f2c214"/><path d="M58 60 C55 66 52 71 46 76 C53 73 58 68 61 61 Z" fill="#fff4c2" stroke="none"/><path d="M52 56 C50 44 52 30 58 20 C60 18 64 18 65 21 C68 32 68 46 66 58 C62 61 56 61 52 56 Z" fill="#f7d02c"/><path d="M58 24 C56 34 56 46 57 55" fill="none" stroke="#e0a800" stroke-width="2"/><path d="M59 20 L61 9 C62 6 66 7 66 10 L65 21" fill="#7a5a12"/><circle cx="11" cy="56.5" r="2.4" fill="#6b4e10" stroke="none"/><circle cx="109.5" cy="50.5" r="2.4" fill="#6b4e10" stroke="none"/><circle cx="42" cy="79.5" r="2.4" fill="#6b4e10" stroke="none"/><circle cx="30" cy="51" r="1.6" fill="#a37c17" stroke="none"/><circle cx="88" cy="47" r="1.6" fill="#a37c17" stroke="none"/><circle cx="61" cy="36" r="1.5" fill="#a37c17" stroke="none"/></g></svg>';
 
 /** 응원·야유 대상(팀 또는 사람)의 점수판 머리 위치와 이름. */
 function watchTarget(msg) {
@@ -628,12 +628,17 @@ function showJeer(msg) {
   box.setAttribute('aria-hidden', 'true');
   box.style.left = `${t.x}px`;
   box.style.top = `${t.y}px`;
-  const word = el('span', 'shout', msg.action === 'hammer' ? '뿅!' : '미끌!');
+  const word = el('span', 'shout', '뿅!');
   document.body.append(box);
-  setTimeout(() => box.remove(), 1900);
+  setTimeout(() => box.remove(), msg.action === 'banana' ? 2600 : 1900);
 
   if (reducedMotion.matches) {
-    box.append(word);
+    if (msg.action === 'hammer') box.append(word);
+    else {
+      const peel = el('span', 'peel');
+      peel.innerHTML = BANANA_SVG;
+      box.append(peel);
+    }
     return;
   }
   if (msg.action === 'hammer') {
@@ -657,26 +662,26 @@ function showJeer(msg) {
       setTimeout(() => sheet.classList.remove('bonk'), 450);
     }, 330);
   } else {
-    // 화면 아래에서 포물선으로 날아와 떨어진다
+    // 바나나 껍질: 화면 아래에서 빙글빙글 던져져 대상 위에 철퍼덕 떨어지고, 잠시 놓여 있다가 사라진다
     const peel = el('span', 'peel');
     peel.innerHTML = BANANA_SVG;
     box.append(peel);
-    const sx = innerWidth / 2 - t.x + (Math.random() - 0.5) * 120;
-    const sy = innerHeight - t.y + 40;
-    const mx = sx / 2;
-    const my = Math.min(sy / 2, 0) - 140;
-    const spin = (Math.random() < 0.5 ? -1 : 1) * 720;
+    const sx = innerWidth / 2 - t.x + (Math.random() - 0.5) * 160;
+    const sy = innerHeight - t.y + 60;
+    const mx = sx * 0.45;
+    const my = Math.min(sy * 0.3, 0) - 150;
+    const spin = (Math.random() < 0.5 ? -1 : 1) * 720; // 두 바퀴 돌고 바로 선 채로 떨어진다
+    const tilt = Math.round((Math.random() - 0.5) * 24);
     peel.animate(
       [
-        { transform: `translate(${sx}px, ${sy}px) rotate(0deg) scale(.8)` },
-        { transform: `translate(${mx}px, ${my}px) rotate(${spin / 2}deg) scale(1.1)`, offset: 0.55 },
-        { transform: `translate(0, 0) rotate(${spin}deg) scale(1)`, offset: 0.85 },
-        { transform: 'translate(0, -6px) rotate(' + (spin + 20) + 'deg) scale(1.05)', offset: 0.92 },
-        { transform: `translate(0, 0) rotate(${spin}deg) scale(1)` },
+        { transform: `translate(${sx}px, ${sy}px) rotate(0deg) scale(.7)` },
+        { transform: `translate(${mx}px, ${my}px) rotate(${spin * 0.6}deg) scale(1)`, offset: 0.5 },
+        { transform: `translate(0, 0) rotate(${spin + tilt}deg) scale(1.05, .82)`, offset: 0.78 },
+        { transform: `translate(2px, -3px) rotate(${spin + tilt}deg) scale(.97, 1.04)`, offset: 0.88 },
+        { transform: `translate(4px, 0) rotate(${spin + tilt}deg) scale(1)` },
       ],
-      { duration: 900, easing: 'cubic-bezier(.3,.6,.4,1)', fill: 'forwards' },
+      { duration: 820, easing: 'cubic-bezier(.3,.55,.45,1)', fill: 'forwards' },
     );
-    setTimeout(() => box.append(word), 820);
   }
 }
 
