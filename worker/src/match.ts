@@ -205,6 +205,17 @@ export function hasOpenSeat(state: RoomState): boolean {
   return state.phase === 'lobby' && state.players.length < MODES[state.mode].seats;
 }
 
+/** 관전자 응원 대상. 2vs2는 팀(0·1), 그 외는 게임에 참가한 자리 번호. 게임 중이 아니거나 잘못된 값이면 null. */
+export function cheerTarget(state: RoomState, value: unknown): { team: number } | { seat: number } | null {
+  const game = state.game;
+  if (state.phase === 'lobby' || !game) return null;
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  if (MODES[state.mode].teams) return value === 0 || value === 1 ? { team: value } : null;
+  const player = state.players[value];
+  if (!player || player.left || !game.order.includes(player.id)) return null;
+  return { seat: value };
+}
+
 /** 2vs2 대기실에서 팀 바꾸기. */
 export function setTeam(state: RoomState, playerId: string, team: unknown, now: number): void {
   const player = playerOf(state, playerId);

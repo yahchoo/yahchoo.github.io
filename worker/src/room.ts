@@ -6,6 +6,7 @@ import {
   RoomError,
   type RoomState,
   attachAccount,
+  cheerTarget,
   createRoom,
   decideRewards,
   disconnect,
@@ -36,6 +37,8 @@ interface Attachment {
 }
 
 const WATCH_TAG = 'watch';
+/** 관전자 한 명이 응원을 보낼 수 있는 간격. */
+const CHEER_GAP_MS = 800;
 
 /** 0 이상 1 미만의 암호학적 난수. 주사위는 서버에서만 굴린다. */
 function secureRandom(): number {
@@ -44,6 +47,8 @@ function secureRandom(): number {
 
 /** 방 하나 = Durable Object 하나. 방 코드로 찾는다. */
 export class YachtRoom extends DurableObject<Env> {
+  /** 관전자별 마지막 응원 시각 (잠들면 비워져도 괜찮다). */
+  private lastCheer = new WeakMap<WebSocket, number>();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     // 접속 유지용 ping은 객체를 깨우지 않고 바로 응답한다.
@@ -188,8 +193,12 @@ export class YachtRoom extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
-    // 관전자는 보기만 한다.
-    if (!att || !att.playerId || typeof message !== 'string') return;
+    if (!att || typeof message !== 'string') return;
+    // 관전자는 보기와 응원만 한다.
+    if (!att.playerId) {
+      await this.cheer(ws, message);
+      return;
+    }
     const playerId = att.playerId;
 
     let data: Record<string, unknown>;
@@ -268,6 +277,32 @@ export class YachtRoom extends DurableObject<Env> {
       }
     }
     this.broadcast(state);
+  }
+
+  /** 관전자 응원: 저장하지 않고 방 안 모두에게 바로 알린다. */
+  private async cheer(ws: WebSocket, message: string): Promise<void> {
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(message);
+    } catch {
+      return;
+    }
+    if (data.type !== 'cheer') return;
+    const now = Date.now();
+    if (now - (this.lastCheer.get(ws) ?? 0) < CHEER_GAP_MS) return;
+    const state = await this.load();
+    const target = state ? cheerTarget(state, data.target) : null;
+    if (!target) return;
+    this.lastCheer.set(ws, now);
+    const out = JSON.stringify({ type: 'cheer', ...target });
+    for (const s of this.ctx.getWebSockets()) {
+      if (s.readyState !== WebSocket.OPEN) continue;
+      try {
+        s.send(out);
+      } catch {
+        // 무시
+      }
+    }
   }
 
   private async onSocketGone(ws: WebSocket): Promise<void> {

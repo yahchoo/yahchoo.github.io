@@ -57,8 +57,9 @@ export function activeRoom() {
  * onState(view), onError(message, fatal), onStatus('open' | 'reconnecting')
  */
 export class RoomConnection {
-  constructor({ code, name, onState, onError, onStatus, getToken = () => null }) {
+  constructor({ code, name, onState, onError, onStatus, onCheer = () => {}, getToken = () => null }) {
     this.code = code;
+    this.onCheer = onCheer;
     this.getToken = getToken;
     this.name = name;
     this.onState = onState;
@@ -120,6 +121,8 @@ export class RoomConnection {
       } else if (msg.type === 'state') {
         this.serverOffset = msg.serverNow - Date.now();
         this.onState(msg);
+      } else if (msg.type === 'cheer') {
+        this.onCheer(msg);
       } else if (msg.type === 'error') {
         if (msg.fatal) {
           this.forget();

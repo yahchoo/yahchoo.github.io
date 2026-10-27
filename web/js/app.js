@@ -360,6 +360,10 @@ function renderGame(m) {
   else if (m.rollsLeft > 0) label.textContent = '다시 굴리기';
   else label.textContent = '칸을 골라 적어요';
   $('roll-pips').hidden = m.finished || !m.turn?.me;
+  // 관전 중에는 굴리기 대신 응원 버튼
+  const cheering = !!m.cheers && !m.finished;
+  btn.hidden = cheering;
+  renderCheerRow(cheering ? m.cheers : null);
   $('roll-pips').querySelectorAll('i').forEach((pip, i) => {
     pip.classList.toggle('used', i < ROLLS_PER_TURN - m.rollsLeft);
   });
@@ -483,6 +487,71 @@ function isYacht(dice) {
   return dice.length === 5 && dice[0] > 0 && dice.every((d) => d === dice[0]);
 }
 
+/* 관전자 응원: 버튼을 누르면 방 안 모두의 화면에서 그 팀(사람) 점수판 위로 깃발 팡파레가 터진다. */
+let cheerKey = '';
+function renderCheerRow(cheers) {
+  const row = $('cheer-row');
+  row.hidden = !cheers;
+  const key = cheers ? cheers.map((c) => `${c.target}:${c.label}`).join('|') : '';
+  if (key === cheerKey) return;
+  cheerKey = key;
+  row.replaceChildren();
+  if (!cheers) return;
+  row.style.setProperty('--n', String(cheers.length));
+  for (const c of cheers) {
+    const b = el('button', `btn btn-cheer ${c.cls}`);
+    b.type = 'button';
+    b.append(pennant(c.cls), el('span', '', c.label));
+    b.addEventListener('click', () => {
+      if (b.classList.contains('cooling')) return;
+      if (!room.conn?.send({ type: 'cheer', target: c.target })) return;
+      b.classList.add('cooling');
+      setTimeout(() => b.classList.remove('cooling'), 800);
+    });
+    row.append(b);
+  }
+}
+
+function showCheer(msg) {
+  const view = room.view;
+  if (!view || $('game').hidden) return;
+  const team = typeof msg.team === 'number' ? msg.team : null;
+  const seat = typeof msg.seat === 'number' ? msg.seat : null;
+  const sel = team !== null ? `#sheet th[data-team="${team}"]` : `#sheet th[data-seat="${seat}"]`;
+  const ths = [...document.querySelectorAll(sel)];
+  if (!ths.length) return;
+  const rects = ths.map((th) => th.getBoundingClientRect());
+  const left = Math.min(...rects.map((r) => r.left));
+  const right = Math.max(...rects.map((r) => r.right));
+  const top = Math.min(...rects.map((r) => r.top));
+  const x = (left + right) / 2;
+  // 점수판 머리가 화면 밖이면 화면 안쪽에서 터뜨린다.
+  const y = Math.min(Math.max(top + 18, 70), innerHeight - 80);
+  const cls = team !== null ? `t${team}` : playerCls(view, seat);
+  const name = team !== null ? TEAM_NAME[team] : view.players[seat]?.name ?? '';
+
+  const box = el('div', `cheer-burst ${cls}`);
+  box.setAttribute('aria-hidden', 'true');
+  box.style.left = `${x}px`;
+  box.style.top = `${y}px`;
+  box.append(el('span', 'shout', `${name} 화이팅!`));
+  if (!reducedMotion.matches) {
+    const spread = Math.max(80, (right - left) / 2 + 40);
+    for (let i = 0; i < 26; i++) {
+      const piece = el('i', `pen ${i % 3 === 2 ? 'gold' : cls}`);
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.1;
+      const dist = 70 + Math.random() * spread;
+      piece.style.setProperty('--dx', `${Math.round(Math.cos(angle) * dist)}px`);
+      piece.style.setProperty('--dy', `${Math.round(Math.sin(angle) * dist)}px`);
+      piece.style.setProperty('--turn', `${(Math.random() < 0.5 ? -1 : 1) * (180 + Math.floor(Math.random() * 360))}deg`);
+      piece.style.setProperty('--delay', `${Math.floor(Math.random() * 120)}ms`);
+      box.append(piece);
+    }
+  }
+  document.body.append(box);
+  setTimeout(() => box.remove(), 1700);
+}
+
 /* 야추 축하: 주사위가 차례로 튀어 오르고, 트레이에 "야추!"가 찍히고, 신호기 깃발이 흩날린다. */
 let yachtTimer = null;
 function celebrateYacht(who) {
@@ -539,6 +608,8 @@ function renderSheet(m, rolling = false) {
   hr.append(el('th', '', ''));
   for (const c of cols) {
     const th = el('th', [c.now ? 'now' : '', c.teamStart ? 'team-start' : ''].join(' ').trim());
+    if (c.seat !== undefined) th.dataset.seat = String(c.seat);
+    if (c.team !== undefined && c.team !== null) th.dataset.team = String(c.team);
     const ph = el('div', 'ph');
     // 상태 줄은 비어 있어도 자리를 차지해서 머리글 높이를 맞춘다.
     if (c.avatar) {
@@ -1041,6 +1112,7 @@ function enterRoom(code, name) {
     code,
     name,
     onState: onRoomState,
+    onCheer: showCheer,
     onError: (message, fatal) => {
       if (fatal) {
         room.conn = null;
@@ -1232,6 +1304,8 @@ function onRoomState(view) {
     else if (!p.connected) status = '연결 끊김';
     else if (seat === view.you) status = '나';
     return {
+      seat,
+      team: p.team,
       name: p.name,
       cls: playerCls(view, seat),
       avatar: p.avatar,
@@ -1276,6 +1350,12 @@ function onRoomState(view) {
     waitingText: finished ? '' : `${nameOf(g.turn)}님이 굴리는 중이에요`,
     watching: !!view.spectator,
     watchers: view.watchers ?? 0,
+    // 관전자 응원 버튼: 2:2는 팀, 그 외는 남아 있는 사람
+    cheers: view.spectator
+      ? view.mode === '2v2'
+        ? [0, 1].map((team) => ({ target: team, label: `${TEAM_NAME[team]} 응원하기`, cls: `t${team}` }))
+        : g.order.filter((seat) => !view.players[seat]?.left).map((seat) => ({ target: seat, label: `${nameOf(seat)} 응원`, cls: playerCls(view, seat) }))
+      : null,
   };
   renderGame(m);
 

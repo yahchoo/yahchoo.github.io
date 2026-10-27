@@ -5,6 +5,7 @@ import {
   AWAY_TURN_MS,
   RoomError,
   attachAccount,
+  cheerTarget,
   decideRewards,
   TURN_MS,
   type Mode,
@@ -414,5 +415,24 @@ describe('관전', () => {
     expect(v.game!.sheets).toHaveLength(4);
     expect(JSON.stringify(v)).not.toContain('"p0"');
     expect(viewFor(s, 'p0', T0).spectator).toBe(false);
+  });
+});
+
+describe('관전 응원', () => {
+  it('2vs2는 팀, 그 외는 게임에 참가한 자리만 응원할 수 있다', () => {
+    const t = room('2v2', 4).s;
+    expect(cheerTarget(t, 0)).toBeNull(); // 대기실
+    start(t, 'p0', T0, first);
+    expect(cheerTarget(t, 1)).toEqual({ team: 1 });
+    expect(cheerTarget(t, 2)).toBeNull();
+    expect(cheerTarget(t, '0')).toBeNull();
+
+    const { s } = room('1v1v1', 3);
+    start(s, 'p0', T0, first);
+    expect(cheerTarget(s, 2)).toEqual({ seat: 2 });
+    expect(cheerTarget(s, 3)).toBeNull();
+    expect(cheerTarget(s, 1.5)).toBeNull();
+    leave(s, 'p2', T0);
+    expect(cheerTarget(s, 2)).toBeNull();
   });
 });
