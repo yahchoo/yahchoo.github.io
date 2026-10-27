@@ -1107,6 +1107,8 @@ function enterRoom(code, name) {
   $('lobby-seats').replaceChildren();
   $('lobby-note').textContent = '방에 들어가는 중…';
   $('start-game').hidden = true;
+  $('sit-down').hidden = true;
+  $('go-watch').hidden = true;
   show('lobby');
 
   room.conn = new RoomConnection({
@@ -1155,6 +1157,12 @@ function leaveRoom() {
 
 $('lobby-leave').addEventListener('click', leaveRoom);
 $('start-game').addEventListener('click', () => room.conn?.send({ type: 'start' }));
+$('go-watch').addEventListener('click', () => {
+  if (!room.conn || room.view?.phase !== 'lobby' || room.view.spectator) return;
+  ui.watchRequested = true;
+  $('go-watch').disabled = true;
+  room.conn.spectate();
+});
 $('sit-down').addEventListener('click', () => {
   if (!room.conn) return;
   ui.sitRequested = true;
@@ -1234,12 +1242,15 @@ function onRoomState(view) {
   // 관전으로 들어왔거나 자리에 앉았을 때 알려 준다.
   if (ui.sitRequested && view.spectator) {
     toast('그 사이에 자리가 찼어요. 계속 관전할게요');
+  } else if (view.spectator && ui.watchRequested) {
+    toast('관전으로 빠졌어요. 빈 자리에 앉기로 다시 참가할 수 있어요');
   } else if (view.spectator && !prev?.spectator) {
     toast(view.phase === 'lobby' ? '방이 꽉 차서 관전으로 들어왔어요' : '게임이 이미 시작해서 관전으로 들어왔어요');
   } else if (!view.spectator && prev?.spectator) {
     toast('자리에 앉았어요');
   }
   ui.sitRequested = false;
+  ui.watchRequested = false;
 
   if (view.phase === 'lobby') {
     closeOverlay('result');
@@ -1436,6 +1447,9 @@ function renderLobby(view) {
   const sit = $('sit-down');
   sit.hidden = !(watching && view.open);
   sit.disabled = false;
+  const goWatch = $('go-watch');
+  goWatch.hidden = watching;
+  goWatch.disabled = false;
 }
 
 /* ---------------------------------------------------------------- 결과 */

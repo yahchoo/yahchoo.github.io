@@ -162,6 +162,21 @@ export class RoomConnection {
     this.connect();
   }
 
+  /** 대기실에서 자리를 비우고 관전자로 다시 들어간다. */
+  spectate() {
+    this.send({ type: 'leave' });
+    store(pidKey(this.code), null);
+    this.watching = true;
+    const old = this.ws;
+    this.ws = null;
+    try {
+      old?.close(1000);
+    } catch {
+      // 무시
+    }
+    this.connect();
+  }
+
   send(data) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
