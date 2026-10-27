@@ -740,3 +740,11 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
 .ad-label { display: block; margin-bottom: 6px; font-size: 11px; color: var(--ink-soft); letter-spacing: .04em; }
 .home-foot { margin: 28px 0 0; font-size: 13px; color: var(--ink-soft); }
 .home-foot a { color: inherit; text-underline-offset: 3px; }
+/* 게임 화면 광고: 휴대폰은 점수판 아래, PC는 주사위 아래 */
+.game-body > .ad-mobile { margin: 8px auto 24px; }
+.tray-area > .ad-desktop { display: none; }
+@media (min-width: 900px) {
+  .game-body > .ad-mobile { display: none !important; }
+  .tray-area > .ad-desktop { display: block; min-height: 270px; margin-top: 56px; }
+  .tray-area > .ad-desktop[hidden] { display: none; }
+}

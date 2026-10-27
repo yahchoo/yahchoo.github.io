@@ -1,7 +1,8 @@
 // 웹 광고(구글 애드센스) 자리.
 // config.js의 ADSENSE_CLIENT(ca-pub-…)와 광고 단위 번호(ADSENSE_SLOTS)가 있을 때만 광고를 불러온다.
 // 값이 없으면 광고 자리는 숨겨 둔 채로 아무것도 불러오지 않는다.
-// 광고는 버튼을 잘못 누르기 쉬운 게임 화면·점수판·팝업에는 두지 않고, 화면 맨 아래에만 둔다.
+// 광고는 버튼을 잘못 누르기 쉬운 곳(굴리기 버튼·점수판 칸 옆, 팝업)에는 두지 않는다.
+// 게임 화면: 휴대폰은 점수판 맨 아래, PC는 주사위 아래 빈 공간. (.ad-mobile / .ad-desktop)
 import * as config from './config.js';
 
 const CLIENT = /^ca-pub-\d{10,20}$/.test(config.ADSENSE_CLIENT ?? '') ? config.ADSENSE_CLIENT : '';
@@ -26,8 +27,13 @@ export function fillAds(screenId) {
   for (const slot of root.querySelectorAll('.ad-slot:not([data-filled])')) {
     const unit = String(SLOTS[slot.dataset.ad] ?? SLOTS.default ?? '');
     if (!/^\d{6,20}$/.test(unit)) continue;
-    addScript();
     slot.hidden = false;
+    // 이 기기에서 쓰지 않는 자리(휴대폰 전용·PC 전용)는 크기가 0이라 건너뛴다. 화면 크기가 바뀌면 다음에 채운다.
+    if (slot.offsetWidth === 0) {
+      slot.hidden = true;
+      continue;
+    }
+    addScript();
     slot.dataset.filled = '1';
     const ins = document.createElement('ins');
     ins.className = 'adsbygoogle';
