@@ -375,7 +375,9 @@ function renderGame(m) {
 }
 
 /* 굴리는 애니메이션: 고정 안 한 주사위가 굴러 들어오면서 눈이 바뀌다가 하나씩 멈춘다. */
-const rollAnim = { dice: new Set(), timers: [], until: 0, pending: false, waiting: new Map(), endAt: 0 };
+const rollAnim = { dice: new Set(), timers: [], until: 0, pending: false, waiting: new Map(), endAt: 0, guard: null };
+/** 결과를 기다리며 눈을 돌리는 시간의 최대치. 이 안에 결과가 안 오면 지금 눈으로 멈춘다. */
+const PENDING_MAX_MS = 4000;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 function isRolling() {
@@ -383,6 +385,8 @@ function isRolling() {
 }
 
 function stopRolling() {
+  clearTimeout(rollAnim.guard);
+  rollAnim.guard = null;
   for (const t of rollAnim.timers) clearTimeout(t);
   for (const t of rollAnim.waiting.values()) clearInterval(t);
   rollAnim.timers = [];
@@ -407,6 +411,12 @@ function startRolling(m, { pending = false } = {}) {
     return;
   }
   rollAnim.pending = pending;
+  if (pending) {
+    // 안전장치: 요청이 서버에 닿지 못했거나(연결 끊김 등) 결과가 오지 않으면 눈이 계속 돌지 않게 멈춘다.
+    rollAnim.guard = setTimeout(() => {
+      if (rollAnim.pending) settleRolling();
+    }, PENDING_MAX_MS);
+  }
 
   const tray = $('tray');
   void tray.offsetWidth;
@@ -478,6 +488,8 @@ function landDie(i) {
 /** 먼저 굴리기 시작한 주사위의 결과가 왔다. 흔들리며 기다리던 주사위는 하나씩 멈추고, 아직 굴러가는 주사위는 원래 시간에 멈춘다. */
 function settleRolling() {
   rollAnim.pending = false;
+  clearTimeout(rollAnim.guard);
+  rollAnim.guard = null;
   [...rollAnim.waiting.keys()].forEach((i, n) => {
     clearInterval(rollAnim.waiting.get(i));
     rollAnim.waiting.set(i, undefined);
@@ -915,6 +927,8 @@ async function soloAction(fn) {
   }
   if (ui.kind !== 'solo' || solo !== game) return;
   renderSolo();
+  // 요청이 끝났는데도 기다리는 중이면(굴리기 요청이 실제로 가지 않은 경우 등) 지금 눈으로 멈춘다.
+  if (rollAnim.pending) settleRolling();
   if (soloResult && solo.done) {
     if (solo.reward) updatePoints(solo.reward.balance);
     else if (currentUser() && solo.claimable) await claimFinishedSolo();
@@ -1276,6 +1290,8 @@ function enterRoom(code, name) {
       if (status === 'reconnecting') {
         banner.textContent = '연결이 끊겨서 다시 연결하는 중이에요';
         banner.hidden = false;
+        // 보낸 굴리기가 서버에 닿지 못했을 수 있으니 기다리던 주사위는 멈춘다. 다시 연결되면 서버 상태로 맞춰진다.
+        if (rollAnim.pending) settleRolling();
       } else {
         banner.hidden = true;
       }
