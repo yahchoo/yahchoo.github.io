@@ -37,7 +37,10 @@ jobs:
         run: |
           exec > >(tee -a /tmp/report.txt) 2>&1
           echo '### D1 info'
-          npx wrangler d1 info yacht-dice --json | tee /tmp/d1info.json
+          W="$GITHUB_WORKSPACE/worker/node_modules/.bin/wrangler"
+          cd "$RUNNER_TEMP"   # wrangler.toml의 임시 ID 대신 이름으로 찾게 한다
+          $W d1 list --json | jq -c '.[] | select(.name == "yacht-dice")' | tee /tmp/d1info.json
+          $W d1 info yacht-dice
 
       - name: D1 rows
         continue-on-error: true
@@ -45,7 +48,9 @@ jobs:
         run: |
           exec > >(tee -a /tmp/report.txt) 2>&1
           echo '### D1 rows'
-          q() { npx wrangler d1 execute yacht-dice --remote --json --command "$1" | jq -c '.[0].results'; }
+          W="$GITHUB_WORKSPACE/worker/node_modules/.bin/wrangler"
+          cd "$RUNNER_TEMP"
+          q() { $W d1 execute yacht-dice --remote --json --command "$1" | jq -c '.[0].results' || true; }
           NOW=$(($(date +%s) * 1000))
           echo "tables:"; q "SELECT 'solo_games' t, COUNT(*) n FROM solo_games UNION ALL SELECT 'rankings', COUNT(*) FROM rankings UNION ALL SELECT 'users', COUNT(*) FROM users UNION ALL SELECT 'sessions', COUNT(*) FROM sessions UNION ALL SELECT 'point_log', COUNT(*) FROM point_log"
           echo "games updated in last 1h / 24h:"; q "SELECT SUM(updated_at > $NOW - 3600000) h1, SUM(updated_at > $NOW - 86400000) h24, SUM(started_at > $NOW - 86400000) started24 FROM solo_games"
@@ -60,7 +65,7 @@ jobs:
           exec > >(tee -a /tmp/report.txt) 2>&1
           echo '### Cloudflare analytics (24h)'
           SINCE=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ); UNTIL=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          DBID=$(jq -r '.uuid // .id // empty' /tmp/d1info.json 2>/dev/null)
+          DBID=$(jq -r '.uuid // .id // empty' /tmp/d1info.json 2>/dev/null); echo "db $DBID"
           QUERY=$(jq -n --arg a "$CLOUDFLARE_ACCOUNT_ID" --arg s "$SINCE" --arg u "$UNTIL" --arg db "$DBID" '{query: "query($a:String!,$s:Time!,$u:Time!,$db:String!){viewer{accounts(filter:{accountTag:$a}){workers:workersInvocationsAdaptive(limit:20,filter:{datetime_geq:$s,datetime_leq:$u,scriptName:\"yacht-dice-api\"}){sum{requests errors subrequests} quantiles{cpuTimeP50 cpuTimeP99 durationP50 durationP99 wallTimeP50 wallTimeP99} dimensions{status}} d1:d1AnalyticsAdaptiveGroups(limit:10000,filter:{datetime_geq:$s,datetime_leq:$u,databaseId:$db}){sum{readQueries writeQueries rowsRead rowsWritten} quantiles{queryBatchTimeMsP50 queryBatchTimeMsP90} dimensions{datetimeHour}} dos:durableObjectsInvocationsAdaptiveGroups(limit:20,filter:{datetime_geq:$s,datetime_leq:$u}){sum{requests errors} quantiles{wallTimeP50 wallTimeP99}}}}}", variables: {a: $a, s: $s, u: $u, db: $db}}')
           curl -s https://api.cloudflare.com/client/v4/graphql -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' -d "$QUERY" > /tmp/an.json
           jq -c '.errors' /tmp/an.json
