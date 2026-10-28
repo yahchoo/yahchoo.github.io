@@ -10,7 +10,7 @@ on:
     branches: [diag]
 
 permissions:
-  contents: read
+  contents: write  # 결과를 diag-results 브랜치에 남긴다
 
 jobs:
   diag:
@@ -33,11 +33,18 @@ jobs:
 
       - name: D1 info
         continue-on-error: true
-        run: npx wrangler d1 info yacht-dice --json | tee /tmp/d1info.json
+        shell: bash
+        run: |
+          exec > >(tee -a /tmp/report.txt) 2>&1
+          echo '### D1 info'
+          npx wrangler d1 info yacht-dice --json | tee /tmp/d1info.json
 
       - name: D1 rows
         continue-on-error: true
+        shell: bash
         run: |
+          exec > >(tee -a /tmp/report.txt) 2>&1
+          echo '### D1 rows'
           q() { npx wrangler d1 execute yacht-dice --remote --json --command "$1" | jq -c '.[0].results'; }
           NOW=$(($(date +%s) * 1000))
           echo "tables:"; q "SELECT 'solo_games' t, COUNT(*) n FROM solo_games UNION ALL SELECT 'rankings', COUNT(*) FROM rankings UNION ALL SELECT 'users', COUNT(*) FROM users UNION ALL SELECT 'sessions', COUNT(*) FROM sessions UNION ALL SELECT 'point_log', COUNT(*) FROM point_log"
@@ -48,7 +55,10 @@ jobs:
 
       - name: Cloudflare analytics (24h)
         continue-on-error: true
+        shell: bash
         run: |
+          exec > >(tee -a /tmp/report.txt) 2>&1
+          echo '### Cloudflare analytics (24h)'
           SINCE=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ); UNTIL=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           DBID=$(jq -r '.uuid // .id // empty' /tmp/d1info.json 2>/dev/null)
           QUERY=$(jq -n --arg a "$CLOUDFLARE_ACCOUNT_ID" --arg s "$SINCE" --arg u "$UNTIL" --arg db "$DBID" '{query: "query($a:String!,$s:Time!,$u:Time!,$db:String!){viewer{accounts(filter:{accountTag:$a}){workers:workersInvocationsAdaptive(limit:20,filter:{datetime_geq:$s,datetime_leq:$u,scriptName:\"yacht-dice-api\"}){sum{requests errors subrequests} quantiles{cpuTimeP50 cpuTimeP99 durationP50 durationP99 wallTimeP50 wallTimeP99} dimensions{status}} d1:d1AnalyticsAdaptiveGroups(limit:10000,filter:{datetime_geq:$s,datetime_leq:$u,databaseId:$db}){sum{readQueries writeQueries rowsRead rowsWritten} quantiles{queryBatchTimeMsP50 queryBatchTimeMsP90} dimensions{datetimeHour}} dos:durableObjectsInvocationsAdaptiveGroups(limit:20,filter:{datetime_geq:$s,datetime_leq:$u}){sum{requests errors} quantiles{wallTimeP50 wallTimeP99}}}}}", variables: {a: $a, s: $s, u: $u, db: $db}}')
@@ -61,7 +71,10 @@ jobs:
 
       - name: Response times (from GitHub runner)
         continue-on-error: true
+        shell: bash
         run: |
+          exec > >(tee -a /tmp/report.txt) 2>&1
+          echo '### Response times (from GitHub runner)'
           t() { curl -s -o /tmp/out -w '%{time_total}' "$@"; }
           for i in 1 2 3; do echo "health $(t $API/api/health)"; done
           S=$(curl -s -X POST -H 'Content-Type: application/json' -d '{}' -w '\n%{time_total}' $API/api/solo/start)
@@ -71,3 +84,12 @@ jobs:
           echo "rank week $(t "$API/api/rankings?period=week&limit=50")"
           echo "rank all $(t "$API/api/rankings?period=all&limit=50")"
           curl -sI $API/api/health | grep -i cf-ray
+
+      - name: Save report to diag-results branch
+        if: always()
+        working-directory: .
+        run: |
+          mkdir -p /tmp/out && cp /tmp/report.txt /tmp/out/report.txt || echo "no report" > /tmp/out/report.txt
+          cd /tmp/out && git init -q -b diag-results && git add report.txt
+          git -c user.name=diag -c user.email=diag@users.noreply.github.com commit -q -m "diag $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" diag-results
