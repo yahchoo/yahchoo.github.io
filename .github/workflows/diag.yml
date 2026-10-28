@@ -84,8 +84,17 @@ jobs:
           for i in 1 2 3; do echo "health $(t $API/api/health)"; done
           S=$(curl -s -X POST -H 'Content-Type: application/json' -d '{}' -w '\n%{time_total}' $API/api/solo/start)
           ID=$(echo "$S" | head -1 | jq -r .gameId); echo "start $(echo "$S" | tail -1)"
-          for i in 1 2 3; do echo "roll $(t -X POST -H 'Content-Type: application/json' -d "{\"gameId\":\"$ID\",\"held\":[false,false,false,false,false]}" $API/api/solo/roll) $(head -c 80 /tmp/out)"; done
-          echo "score $(t -X POST -H 'Content-Type: application/json' -d "{\"gameId\":\"$ID\",\"category\":\"choice\"}" $API/api/solo/score)"
+          st() { curl -s -D /tmp/h -o /tmp/out -w '%{time_total}' "$@"; echo -n " $(grep -i server-timing /tmp/h | tr -d '\r')"; }
+          echo "-- 예전 방식 (sync 없음: 왕복 2번)"
+          for i in 1 2 3; do echo "roll $(st -X POST -H 'Content-Type: application/json' -d "{\"gameId\":\"$ID\",\"held\":[false,false,false,false,false]}" $API/api/solo/roll)"; done
+          echo "score $(st -X POST -H 'Content-Type: application/json' -d "{\"gameId\":\"$ID\",\"category\":\"choice\"}" $API/api/solo/score)"
+          echo "-- 새 방식 (sync 함께: 왕복 1번)"
+          SYNC=$(jq -c .sync /tmp/out)
+          for i in 1 2 3; do
+            echo "roll $(st -X POST -H 'Content-Type: application/json' -d "{\"gameId\":\"$ID\",\"held\":[false,false,false,false,false],\"sync\":$SYNC}" $API/api/solo/roll)"
+            SYNC=$(jq -c .sync /tmp/out)
+          done
+          echo "score $(st -X POST -H 'Content-Type: application/json' -d "{\"gameId\":\"$ID\",\"category\":\"twos\",\"sync\":$SYNC}" $API/api/solo/score)"
           echo "rank week $(t "$API/api/rankings?period=week&limit=50")"
           echo "rank all $(t "$API/api/rankings?period=all&limit=50")"
           curl -sI $API/api/health | grep -i cf-ray
