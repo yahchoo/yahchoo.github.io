@@ -52,6 +52,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
+    'Timing-Allow-Origin': origin,
     Vary: 'Origin',
   };
 }
@@ -113,10 +114,21 @@ function withinWindow(row: Pick<GameRow, 'finished_at'>, now: number): boolean {
   return row.finished_at !== null && now - row.finished_at <= RANK_WINDOW_MS;
 }
 
-function soloView(id: string, state: SoloState, row: Pick<GameRow, 'finished_at' | 'ranked' | 'user_id'>, now: number) {
+function soloView(
+  id: string,
+  state: SoloState,
+  row: Pick<GameRow, 'finished_at' | 'ranked' | 'user_id'>,
+  now: number,
+  stored?: { state: string; version: number },
+) {
   const finished = isFinished(state);
   return {
     gameId: id,
+    /**
+     * 저장된 상태 그대로와 버전. 다음 요청에 함께 보내면 서버가 다시 읽지 않고 한 번에 저장한다.
+     * (저장된 값과 똑같을 때만 저장되므로 고치거나 예전 값을 보내면 그냥 느린 길로 처리된다)
+     */
+    sync: stored ?? null,
     sheet: state.sheet,
     dice: state.dice,
     held: state.held,
@@ -144,15 +156,16 @@ async function startSolo(request: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID();
   const now = Date.now();
   const state = newSolo();
+  const raw = JSON.stringify(state);
   await env.DB.prepare('INSERT INTO solo_games (id, state, started_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, JSON.stringify(state), now, now, user?.id ?? null)
+    .bind(id, raw, now, now, user?.id ?? null)
     .run();
-  return json(soloView(id, state, { finished_at: null, ranked: 0, user_id: user?.id ?? null }, now), 201);
+  return json(soloView(id, state, { finished_at: null, ranked: 0, user_id: user?.id ?? null }, now, { state: raw, version: 0 }), 201);
 }
 
 async function getSolo(env: Env, id: string): Promise<Response> {
   const row = await loadGame(env, requireGameId(id));
-  return json(soloView(row.id, parseState(row.state), row, Date.now()));
+  return json(soloView(row.id, parseState(row.state), row, Date.now(), { state: row.state, version: row.version }));
 }
 
 /* 랭킹은 로그인한 사람마다 가장 좋은 기록 하나만, 로그인하지 않은 기록은 판마다 보여 준다. */
@@ -178,7 +191,7 @@ async function userRank(env: Env, userId: string, since: number): Promise<{ best
 /**
  * 로그인한 계정의 판이 끝났을 때: 점수만큼 포인트를 주고 랭킹에 올린다. (몇 번 불려도 한 번만)
  */
-async function settleUserGame(env: Env, row: GameRow, userId: string, total: number, finishedAt: number) {
+async function settleUserGame(env: Env, row: Pick<GameRow, 'id'>, userId: string, total: number, finishedAt: number) {
   const points = scorePoints(total);
   const earned = await grantPoints(env, userId, points, 'solo', row.id);
   await env.DB.batch([
@@ -198,17 +211,53 @@ async function settleUserGame(env: Env, row: GameRow, userId: string, total: num
   };
 }
 
-/** 굴리기·적기 공통: 읽고, 바꾸고, 그 사이 다른 요청이 끼어들지 않았을 때만 저장한다. */
+/**
+ * 굴리기·적기 공통: 바꾸고, 그 사이 다른 요청이 끼어들지 않았을 때만 저장한다.
+ *
+ * 빠른 길: 화면이 지난 응답의 상태(sync)를 함께 보내면 다시 읽지 않고 바로 저장한다.
+ *   저장할 때 "id·버전·상태 문자열이 모두 같은 행"만 바꾸므로, 상태를 고치거나 예전 상태를 보내면
+ *   아무 행도 바뀌지 않고 느린 길로 넘어간다. → 데이터베이스 왕복 1번
+ * 느린 길: 읽고, 바꾸고, 저장. → 왕복 2번
+ */
 async function updateSolo(
   request: Request,
   env: Env,
   change: (state: SoloState, body: Record<string, unknown>) => SoloState,
 ): Promise<Response> {
   const body = await readJson(request);
-  const row = await loadGame(env, requireGameId(body.gameId));
+  const gameId = requireGameId(body.gameId);
+  const sync = body.sync as { state?: unknown; version?: unknown } | undefined;
+  if (sync && typeof sync.state === 'string' && sync.state.length < 4000 && Number.isInteger(sync.version)) {
+    let claimed: SoloState | null = null;
+    try {
+      claimed = parseState(sync.state);
+    } catch {
+      claimed = null;
+    }
+    if (claimed) {
+      const fast = await applySolo(env, gameId, claimed, sync.state, sync.version as number, change, body);
+      if (fast) return fast;
+    }
+  }
+  const row = await loadGame(env, gameId);
+  const slow = await applySolo(env, row.id, parseState(row.state), row.state, row.version, change, body);
+  if (!slow) throw new HttpError(409, '다른 요청과 겹쳤어요. 다시 시도해 주세요');
+  return slow;
+}
+
+/** 상태를 바꿔 저장한다. 저장된 행이 (버전, 상태)와 다르면 null. */
+async function applySolo(
+  env: Env,
+  gameId: string,
+  state: SoloState,
+  raw: string,
+  version: number,
+  change: (state: SoloState, body: Record<string, unknown>) => SoloState,
+  body: Record<string, unknown>,
+): Promise<Response | null> {
   let next: SoloState;
   try {
-    next = change(parseState(row.state), body);
+    next = change(state, body);
   } catch (err) {
     if (err instanceof SoloError) throw new HttpError(409, err.message);
     throw err;
@@ -216,23 +265,25 @@ async function updateSolo(
   const now = Date.now();
   const finished = isFinished(next);
   const total = soloTotal(next);
+  const nextRaw = JSON.stringify(next);
   const updated = await env.DB.prepare(
     `UPDATE solo_games
         SET state = ?1, version = version + 1, updated_at = ?2,
             finished_at = CASE WHEN ?3 THEN ?2 ELSE NULL END,
             total = CASE WHEN ?3 THEN ?4 ELSE NULL END
-      WHERE id = ?5 AND version = ?6
-  RETURNING finished_at, ranked, user_id`,
+      WHERE id = ?5 AND version = ?6 AND state = ?7
+  RETURNING finished_at, ranked, user_id, version`,
   )
-    .bind(JSON.stringify(next), now, finished ? 1 : 0, total, row.id, row.version)
-    .first<Pick<GameRow, 'finished_at' | 'ranked' | 'user_id'>>();
-  if (!updated) throw new HttpError(409, '다른 요청과 겹쳤어요. 다시 시도해 주세요');
+    .bind(nextRaw, now, finished ? 1 : 0, total, gameId, version, raw)
+    .first<Pick<GameRow, 'finished_at' | 'ranked' | 'user_id' | 'version'>>();
+  if (!updated) return null;
+  const stored = { state: nextRaw, version: updated.version };
 
   if (finished && updated.user_id) {
-    const reward = await settleUserGame(env, row, updated.user_id, total, updated.finished_at ?? now);
-    return json({ ...soloView(row.id, next, { ...updated, ranked: 1 }, now), reward });
+    const reward = await settleUserGame(env, { id: gameId }, updated.user_id, total, updated.finished_at ?? now);
+    return json({ ...soloView(gameId, next, { ...updated, ranked: 1 }, now, stored), reward });
   }
-  return json(soloView(row.id, next, updated, now));
+  return json(soloView(gameId, next, updated, now, stored));
 }
 
 /** 로그인하지 않고 끝낸 판을 내 계정으로 가져와 포인트를 받는다 (끝낸 뒤 24시간 안). */
@@ -392,6 +443,7 @@ export default {
       return new Response(null, { status: 204, headers: cors });
     }
     let response: Response;
+    const started = Date.now();
     try {
       response = await route(request, env);
     } catch (err) {
@@ -405,6 +457,8 @@ export default {
     // WebSocket 연결 응답(101)은 그대로 돌려준다.
     if (response.status === 101 || response.webSocket) return response;
     for (const [k, v] of Object.entries(cors)) response.headers.set(k, v);
+    // 서버 안에서 걸린 시간(주로 데이터베이스 왕복). 느려질 때 원인을 찾는 데 쓴다.
+    response.headers.set('Server-Timing', `app;dur=${Date.now() - started}`);
     return response;
   },
 

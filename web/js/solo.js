@@ -180,6 +180,8 @@ class ServerSoloGame {
     this.rankable = view.rankable;
     this.linked = !!view.linked;
     this.claimable = !!view.claimable;
+    // 서버에 저장된 상태 그대로. 다음 요청에 함께 보내면 서버가 다시 읽지 않아 빨라진다.
+    this.sync = view.sync ?? null;
     if (view.reward) this.reward = view.reward;
   }
 
@@ -188,7 +190,7 @@ class ServerSoloGame {
     const held = [...this.held];
     this.rolling = true;
     return this.enqueue(async () => {
-      const view = await api('/api/solo/roll', { gameId: this.gameId, held });
+      const view = await api('/api/solo/roll', { gameId: this.gameId, held, sync: this.sync });
       this.apply(view);
     }).finally(() => {
       this.rolling = false;
@@ -205,7 +207,7 @@ class ServerSoloGame {
     this.held = Array(DICE_COUNT).fill(false);
     this.rollsLeft = ROLLS_PER_TURN;
     return this.enqueue(async () => {
-      const view = await api('/api/solo/score', { gameId: this.gameId, category });
+      const view = await api('/api/solo/score', { gameId: this.gameId, category, sync: this.sync });
       this.apply(view);
       if (!view.finished) return null;
       write(SERVER_KEY, null);
