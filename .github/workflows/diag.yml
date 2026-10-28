@@ -89,7 +89,10 @@ jobs:
         if: always()
         working-directory: .
         run: |
-          mkdir -p /tmp/out && cp /tmp/report.txt /tmp/out/report.txt || echo "no report" > /tmp/out/report.txt
-          cd /tmp/out && git init -q -b diag-results && git add report.txt
-          git -c user.name=diag -c user.email=diag@users.noreply.github.com commit -q -m "diag $(date -u +%FT%TZ)"
-          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" diag-results
+          cp /tmp/report.txt "$RUNNER_TEMP/report.txt" 2>/dev/null || echo "no report" > "$RUNNER_TEMP/report.txt"
+          git config user.name diag && git config user.email diag@users.noreply.github.com
+          git checkout -q --orphan diag-results
+          git rm -rfq . > /dev/null
+          cp "$RUNNER_TEMP/report.txt" report.txt
+          git add report.txt && git commit -q -m "diag $(date -u +%FT%TZ)"
+          git push -f origin diag-results 2>&1
