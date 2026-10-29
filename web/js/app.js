@@ -1335,8 +1335,8 @@ function inviteLink() {
 $('copy-invite').addEventListener('click', async () => {
   const link = inviteLink();
   const mode = MODE_LABEL[room.view?.mode] ?? '';
-  const text = `야추 ${mode} 같이 해요! 방 코드 ${room.code}`;
-  const data = { title: '야추 다이스', text, url: link };
+  const text = `오늘도 야추 ${mode} 한 판 같이 해요! 방 코드 ${room.code}`;
+  const data = { title: '오늘도 야추', text, url: link };
   if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
     try {
       await navigator.share(data);

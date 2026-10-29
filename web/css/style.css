@@ -810,3 +810,8 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
   80% { transform: translate(2px, 0); }
 }
 .jeer-hammer .shout { left: -34px; top: -58px; }
+.logo-pre {
+  display: block; margin-bottom: .12em;
+  font-size: .36em; line-height: 1; letter-spacing: .02em;
+  color: var(--signal-yellow);
+}
