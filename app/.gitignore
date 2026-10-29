@@ -1,0 +1,42 @@
+node_modules/
+# build-web.mjs가 web/에서 만든다
+www/
+# 실제 광고·로그인 설정 (README 참고)
+*.config.local.json
+.env
+# 아이콘·스플래시 원본 (make-assets.mjs가 web/favicon.svg로 만든다)
+/assets/
+
+# 서명 키, 비밀값
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+keystore.properties
+google-services.json
+GoogleService-Info.plist
+
+# Android 빌드 산출물
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+android/app/src/main/res/values/app_config.xml
+*.apk
+*.aab
+
+# iOS 빌드 산출물
+ios/App/build/
+ios/App/Pods/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/AppConfig.xcconfig
+ios/DerivedData/
+xcuserdata/

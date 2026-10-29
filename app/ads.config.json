@@ -1,0 +1,11 @@
+{
+  "_comment": "AdMob ID. 기본값은 구글 공식 테스트 ID. 실제 ID는 이 파일을 고치지 말고 ads.config.local.json(커밋 안 됨)이나 환경변수에 넣는다. README 참고",
+  "android": {
+    "appId": "ca-app-pub-3940256099942544~3347511713",
+    "banner": "ca-app-pub-3940256099942544/9214589741"
+  },
+  "ios": {
+    "appId": "ca-app-pub-3940256099942544~1458002511",
+    "banner": "ca-app-pub-3940256099942544/2435281174"
+  }
+}

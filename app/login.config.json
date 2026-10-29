@@ -1,0 +1,5 @@
+{
+  "_comment": "앱 구글 로그인. GCP에서 OAuth 클라이언트(Android: 패키지명+SHA-1, iOS: 번들 ID)를 만든 뒤 켠다. 꺼져 있으면 로그인 대신 '준비 중' 안내. README 참고",
+  "android": false,
+  "iosClientId": ""
+}

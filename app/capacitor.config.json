@@ -1,0 +1,36 @@
+{
+  "appId": "com.ohsang.play.yachoo",
+  "appName": "오늘도 야추",
+  "webDir": "www",
+  "backgroundColor": "#1b2f5b",
+  "android": {
+    "backgroundColor": "#1b2f5b"
+  },
+  "ios": {
+    "backgroundColor": "#1b2f5b",
+    "contentInset": "never"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover",
+      "style": "DARK"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#1b2f5b",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    },
+    "SocialLogin": {
+      "providers": {
+        "google": true,
+        "facebook": false,
+        "apple": false,
+        "twitter": false
+      },
+      "logLevel": 1
+    }
+  }
+}

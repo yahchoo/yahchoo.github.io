@@ -1,0 +1,2 @@
+// AdMob 앱 ID, 구글 로그인 URL 스킴 (app/scripts/build-web.mjs가 만든다. 커밋하지 않음)
+#include? "AppConfig.xcconfig"
