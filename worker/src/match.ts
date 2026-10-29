@@ -58,7 +58,17 @@ export interface Player {
 export interface Reward {
   playerId: string;
   userId: string;
+  /** 합계 = score + bonus */
   amount: number;
+  /** 점수로 받는 포인트 (앱에서 광고를 보면 이만큼 한 번 더 받는다) */
+  score: number;
+  /** 등수 보너스 (2배 대상 아님) */
+  bonus: number;
+}
+
+/** 이 판 포인트 기록의 ref. 점수 포인트 2배를 받을 때도 같은 ref를 쓴다. */
+export function rewardRef(state: RoomState): string {
+  return `${state.code}:${state.createdAt}:${state.match}`;
 }
 
 export interface ScoredEvent {
@@ -491,7 +501,8 @@ export function decideRewards(state: RoomState): Reward[] {
   }
   return Object.entries(game.rewards).flatMap(([playerId, amount]) => {
     const userId = state.players.find((p) => p.id === playerId)?.userId;
-    return userId && amount > 0 ? [{ playerId, userId, amount }] : [];
+    const score = Math.min(amount, scorePoints(totalFor(game.sheets[playerId] ?? {})));
+    return userId && amount > 0 ? [{ playerId, userId, amount, score, bonus: amount - score }] : [];
   });
 }
 
@@ -596,6 +607,8 @@ export function viewFor(state: RoomState, playerId: string | null, now: number, 
             game.rewards && game.rewardsGranted
               ? Object.fromEntries(Object.entries(game.rewards).map(([id, amount]) => [seatOf(id), amount]))
               : null,
+          /** 포인트 기록 ref (앱에서 점수 포인트 2배를 받을 때 보낸다) */
+          rewardRef: game.rewards && game.rewardsGranted ? rewardRef(state) : null,
         }
       : null,
   };

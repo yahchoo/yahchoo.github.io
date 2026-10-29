@@ -892,3 +892,16 @@ html { touch-action: manipulation; }
   .result-actions.nudge, .result-actions.nudge .btn { animation: none; }
   .result-actions.nudge .btn { box-shadow: 0 0 0 4px var(--signal-yellow); }
 }
+
+/* 앱: 광고 보고 포인트 2배 */
+.double-offer { display: grid; gap: 4px; justify-items: center; margin-top: 10px; width: 100%; }
+.btn-reward {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--signal-yellow); color: #13234a; font-weight: 700;
+}
+.btn-reward .play {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: #13234a; color: var(--signal-yellow); font-size: 10px; padding-left: 2px;
+}
+.double-note { color: var(--ink-soft); font-size: 12px; }
+.double-done { background: var(--signal-yellow); color: #13234a; }

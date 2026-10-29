@@ -139,6 +139,13 @@ export async function appleLogin() {
   return data.me;
 }
 
+/** 앱에서 보상형 광고를 본 뒤: 그 판의 점수 포인트를 한 번 더 받는다. → { points, balance } */
+export async function doublePoints(kind, ref) {
+  const data = await api('/api/points/double', { kind, ref });
+  updatePoints(data.balance);
+  return data;
+}
+
 /** 계정 삭제: 포인트·아이템·랭킹·기록을 모두 지우고 이 기기에서도 로그아웃한다. Apple 계정은 연결도 해제된다. */
 export async function deleteAccount() {
   await api('/api/me/delete', {});

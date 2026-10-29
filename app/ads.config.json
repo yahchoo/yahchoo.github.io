@@ -1,7 +1,8 @@
 {
-  "_comment": "AdMob 광고 ID. 기본값은 구글 공식 테스트 ID. 실제 ID는 저장소 Variables(ADMOB_IOS_APP_ID, ADMOB_IOS_BANNER_ID)로 넣으면 빌드 때 덮어쓴다.",
+  "_comment": "AdMob 광고 ID. 기본값은 구글 공식 테스트 ID. 실제 ID는 저장소 Variables(ADMOB_IOS_APP_ID, ADMOB_IOS_BANNER_ID, ADMOB_IOS_REWARDED_ID)로 넣으면 빌드 때 덮어쓴다.",
   "ios": {
     "appId": "ca-app-pub-3940256099942544~1458002511",
-    "banner": "ca-app-pub-3940256099942544/2435281174"
+    "banner": "ca-app-pub-3940256099942544/2435281174",
+    "rewarded": "ca-app-pub-3940256099942544/1712485313"
   }
 }

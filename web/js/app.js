@@ -16,12 +16,12 @@ import { bestScore, claimSolo, clearSoloSaves, fetchRankings, hasSoloInProgress,
 import { RoomConnection, activeRoom, apiBase, createRoom } from './net.js';
 import { ITEMS, ITEM_BY_ID, SLOTS, renderAvatar } from './avatar.js';
 import {
-  appleLogin, appleLoginAvailable, authToken, buyItem, currentUser, deleteAccount, devLogin, isLocalDev, loginAvailable, logout, mountGoogleButton,
+  appleLogin, appleLoginAvailable, authToken, buyItem, currentUser, deleteAccount, devLogin, doublePoints, isLocalDev, loginAvailable, logout, mountGoogleButton,
   onAccountChange, refreshMe, saveProfile, updatePoints,
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
 import { JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
-import { fillAds, startNativeAds } from './ads.js';
+import { fillAds, prepareRewarded, rewardedAvailable, startNativeAds, watchRewarded } from './ads.js';
 import { haptic, inApp, share } from './native.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1020,6 +1020,57 @@ function renderSolo() {
 /* ---------------------------------------------------------------- 랭킹 등록 (결과 화면) */
 
 /** 결과 화면: 받은 포인트와 랭킹, 또는 로그인하고 받기 */
+/*
+ * 앱 전용: '광고 보고 포인트 2배'. 점수로 받은 포인트만 한 번 더 (승리·2등·참가 보너스는 제외).
+ * kind: 'solo' | 'match', ref: 혼자 하기 게임 id 또는 같이 하기 결과의 rewardRef, base: 점수 포인트
+ */
+const doubled = new Map(); // `${kind}:${ref}` → 더 받은 포인트
+function renderDoubleOffer(box, kind, ref, base) {
+  if (!rewardedAvailable() || !currentUser() || !ref || !(base > 0)) return;
+  const key = `${kind}:${ref}`;
+  const row = el('div', 'double-offer');
+  box.append(row);
+  const paint = () => {
+    row.replaceChildren();
+    if (doubled.has(key)) {
+      row.append(el('span', 'points-chip double-done', `+${doubled.get(key).toLocaleString()}P 더 받았어요 (2배)`));
+      return;
+    }
+    const b = el('button', 'btn btn-reward wide');
+    b.type = 'button';
+    b.append(el('span', 'play', '▶'), el('span', '', `광고 보고 +${base.toLocaleString()}P 더 받기`));
+    const note = el('small', 'double-note', '점수 포인트 2배 · 승리·참가 보너스는 제외');
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      b.lastChild.textContent = '광고 불러오는 중…';
+      const watched = await watchRewarded();
+      if (!watched) {
+        toast('광고를 끝까지 보면 포인트를 더 받을 수 있어요');
+        paint();
+        return;
+      }
+      try {
+        const r = await doublePoints(kind, ref);
+        doubled.set(key, r.points);
+        haptic('medium', 40);
+        // 결과창의 '보유 포인트'도 새 값으로
+        if (kind === 'solo' && solo?.reward) solo.reward.balance = r.balance;
+        if (!$('result').hidden) {
+          showResult(false);
+          return;
+        }
+      } catch (err) {
+        if (/이미/.test(err.message ?? '')) doubled.set(key, base);
+        else toast(err.message ?? '잠시 후 다시 시도해 주세요');
+      }
+      paint();
+    });
+    row.append(b, note);
+    prepareRewarded().catch(() => {}); // 미리 불러 두기
+  };
+  paint();
+}
+
 function renderSoloReward(box) {
   if (!solo?.online) return;
   const r = solo.reward;
@@ -1031,6 +1082,7 @@ function renderSoloReward(box) {
     if (r.all) parts.push(`전체 ${r.all.rank}위`);
     const best = r.all?.best;
     wrap.append(el('small', '', `${parts.join(', ')}${best && best > solo.total ? ` · 내 최고 기록 ${best}점` : ''} · 보유 ${r.balance.toLocaleString()}P`));
+    renderDoubleOffer(wrap, 'solo', solo.gameId, r.points);
     const go = el('button', 'btn btn-secondary wide', '아바타 꾸미러 가기');
     go.type = 'button';
     go.addEventListener('click', () => {
@@ -1766,6 +1818,7 @@ function showResult(open) {
     const myRank = teams ? teams.find((t) => t.seats.includes(me))?.rank : players.find((p) => p.seat === me)?.rank;
     const bonusName = myRank === 1 ? '승리 보너스' : view.mode === '1v1v1' && myRank === 2 ? '2등 보너스' : '참가 보너스';
     wrap.append(el('small', '', bonus > 0 ? `점수 ${myTotal}점 ${base}P · ${bonusName} ${bonus}P` : `점수 ${myTotal}점 ${base}P`));
+    renderDoubleOffer(wrap, 'match', view.game.rewardRef, Math.min(base, myReward));
     extra.append(wrap);
     refreshMe();
   } else if (!view.spectator && view.game.rewards && !currentUser() && loginAvailable()) {

@@ -6,6 +6,7 @@ import { parseAvatar } from '../../web/js/avatar.js';
 import {
   RoomError,
   type RoomState,
+  rewardRef,
   attachAccount,
   cleanName,
   cheerTarget,
@@ -75,9 +76,12 @@ export class YachtRoom extends DurableObject<Env> {
     const game = state.game;
     if (state.phase !== 'finished' || !game || game.rewardsGranted) return;
     const rewards = decideRewards(state);
+    const ref = rewardRef(state);
     for (const r of rewards) {
       try {
-        await grantPoints(this.env, r.userId, r.amount, 'match', `${state.code}:${state.createdAt}:${state.match}`);
+        // 점수 포인트와 등수 보너스를 따로 기록한다. (앱의 '광고 보고 2배'는 점수 포인트만)
+        await grantPoints(this.env, r.userId, r.score, 'match', ref);
+        await grantPoints(this.env, r.userId, r.bonus, 'match-bonus', ref);
       } catch (err) {
         console.error('포인트 지급 실패', err);
       }

@@ -30,6 +30,7 @@ fs.writeFileSync(
 const ads = JSON.parse(fs.readFileSync(path.join(root, 'ads.config.json'), 'utf8'));
 if (process.env.ADMOB_IOS_APP_ID) ads.ios.appId = process.env.ADMOB_IOS_APP_ID;
 if (process.env.ADMOB_IOS_BANNER_ID) ads.ios.banner = process.env.ADMOB_IOS_BANNER_ID;
+if (process.env.ADMOB_IOS_REWARDED_ID) ads.ios.rewarded = process.env.ADMOB_IOS_REWARDED_ID;
 const testing = ads.ios.banner.startsWith('ca-app-pub-3940256099942544/');
 await build({
   entryPoints: [path.join(root, 'src', 'native.js')],
@@ -38,7 +39,7 @@ await build({
   format: 'iife',
   minify: true,
   target: 'safari15',
-  define: { __ADS__: JSON.stringify({ ios: { banner: ads.ios.banner }, testing }) },
+  define: { __ADS__: JSON.stringify({ ios: { banner: ads.ios.banner, rewarded: ads.ios.rewarded }, testing }) },
   logLevel: 'warning',
 });
 

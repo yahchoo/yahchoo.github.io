@@ -179,3 +179,49 @@ export async function startNativeAds() {
   nativeAds.ready = true;
   updateBanner();
 }
+
+/* ---------------------------------------------------------------- 앱: 보상형 광고 (광고 보고 포인트 2배) */
+
+let rewardedLoad = null;
+
+/** 앱에서 보상형 광고를 쓸 수 있으면 true (웹은 항상 false) */
+export function rewardedAvailable() {
+  return !!(native?.AdMob && native.ads?.ios?.rewarded && nativeAds.ready);
+}
+
+/** 미리 불러 둔다 (결과창이 열릴 때). 이미 불러 둔 게 있으면 그대로. */
+export function prepareRewarded() {
+  if (!rewardedAvailable()) return Promise.reject(new Error('광고를 쓸 수 없어요'));
+  if (!rewardedLoad) {
+    rewardedLoad = native.AdMob.prepareRewardVideoAd({ adId: native.ads.ios.rewarded, isTesting: native.ads.testing }).catch((err) => {
+      rewardedLoad = null;
+      throw err;
+    });
+  }
+  return rewardedLoad;
+}
+
+/** 보상형 광고를 보여 준다. 끝까지 봐서 보상을 받으면 true, 중간에 닫거나 실패하면 false. */
+export async function watchRewarded() {
+  const { AdMob } = native;
+  try {
+    await prepareRewarded();
+  } catch {
+    return false;
+  }
+  rewardedLoad = null; // 한 번 보여 준 광고는 다시 못 쓴다
+  return new Promise((resolve) => {
+    let done = false;
+    const handles = [];
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      for (const h of handles) h.then((x) => x.remove()).catch(() => {});
+      resolve(value);
+    };
+    // 보상 없이 닫으면 show()가 끝나지 않으니 닫힘 이벤트로 알아챈다. (보상 → 닫힘 순서라 조금 기다린다)
+    handles.push(AdMob.addListener('onRewardedVideoAdDismissed', () => setTimeout(() => finish(false), 400)));
+    handles.push(AdMob.addListener('onRewardedVideoAdFailedToShow', () => finish(false)));
+    AdMob.showRewardVideoAd().then(() => finish(true), () => finish(false));
+  });
+}

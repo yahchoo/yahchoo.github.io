@@ -314,8 +314,8 @@ describe('포인트', () => {
     const total = totalOf(s, 'p0'); // 모두 같은 점수 → 모두 1등
     expect(r).toHaveLength(2);
     expect(r).toEqual(expect.arrayContaining([
-      expect.objectContaining({ userId: 'u0', amount: scorePoints(total) + 15 }),
-      expect.objectContaining({ userId: 'u2', amount: scorePoints(total) + 15 }),
+      expect.objectContaining({ userId: 'u0', amount: scorePoints(total) + 15, score: scorePoints(total), bonus: 15 }),
+      expect.objectContaining({ userId: 'u2', amount: scorePoints(total) + 15, score: scorePoints(total), bonus: 15 }),
     ]));
     expect(decideRewards(s)).toEqual(r);
   });

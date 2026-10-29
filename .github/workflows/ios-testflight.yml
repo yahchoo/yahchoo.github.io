@@ -10,7 +10,7 @@ name: iOS 빌드 → TestFlight 업로드
 #   ASC_KEY_P8_BASE64     AuthKey_XXXX.p8 파일의 base64 (또는 p8 내용 그대로)
 # API 키는 "관리자(Admin)" 역할이어야 클라우드 서명(인증서·프로파일 자동 관리)이 된다.
 #
-# 선택 Variables: ADMOB_IOS_APP_ID, ADMOB_IOS_BANNER_ID (없으면 구글 테스트 광고)
+# 선택 Variables: ADMOB_IOS_APP_ID, ADMOB_IOS_BANNER_ID, ADMOB_IOS_REWARDED_ID (없으면 구글 테스트 광고)
 
 on:
   workflow_dispatch:
@@ -40,6 +40,7 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ADMOB_IOS_APP_ID: ${{ vars.ADMOB_IOS_APP_ID }}
       ADMOB_IOS_BANNER_ID: ${{ vars.ADMOB_IOS_BANNER_ID }}
+      ADMOB_IOS_REWARDED_ID: ${{ vars.ADMOB_IOS_REWARDED_ID }}
       BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v5

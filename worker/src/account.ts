@@ -261,6 +261,31 @@ async function appleNotify(request: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+/** 광고 보고 2배: 끝난 판의 점수 포인트를 받은 뒤 이 시간 안에만. */
+const DOUBLE_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * 앱에서 보상형 광고를 끝까지 보면 그 판의 '점수로 받은 포인트'를 한 번 더 준다. (등수 보너스는 제외)
+ * body: { kind: 'solo' | 'match', ref } — solo는 게임 id, match는 방 결과의 rewardRef.
+ * 판마다 한 번만 (point_log의 (user, reason, ref)가 유일).
+ */
+async function doublePoints(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(request, env);
+  const body = await readJson(request);
+  const kind = body.kind === 'solo' || body.kind === 'match' ? body.kind : null;
+  const ref = typeof body.ref === 'string' && body.ref.length > 0 && body.ref.length < 120 ? body.ref : null;
+  if (!kind || !ref) throw new HttpError(400, '잘못된 요청이에요');
+  const base = await env.DB.prepare('SELECT amount, created_at FROM point_log WHERE user_id = ? AND reason = ? AND ref = ?')
+    .bind(user.id, kind, ref)
+    .first<{ amount: number; created_at: number }>();
+  if (!base || base.amount <= 0) throw new HttpError(404, '2배로 받을 포인트가 없어요');
+  if (Date.now() - base.created_at > DOUBLE_WINDOW_MS) throw new HttpError(409, '2배 받기 시간이 지났어요');
+  const granted = await grantPoints(env, user.id, base.amount, `double-${kind}`, ref);
+  if (!granted) throw new HttpError(409, '이미 2배를 받았어요');
+  const me = await env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(user.id).first<{ points: number }>();
+  return json({ points: base.amount, balance: me?.points ?? 0 });
+}
+
 /** 로컬 개발 전용 로그인. .dev.vars에 DEV_LOGIN=1이 있고, localhost로 접속할 때만 동작한다. */
 async function loginDev(request: Request, env: Env): Promise<Response> {
   const host = new URL(request.url).hostname;
@@ -377,6 +402,8 @@ export function accountRoute(key: string, request: Request, env: Env): Promise<R
       return appleNotify(request, env);
     case 'POST /api/me/delete':
       return deleteAccount(request, env);
+    case 'POST /api/points/double':
+      return doublePoints(request, env);
     case 'POST /api/auth/logout':
       return logout(request, env);
     case 'GET /api/me':
