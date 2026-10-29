@@ -150,8 +150,10 @@ export async function deleteAccount() {
   }
 }
 
+/** 내 컴퓨터의 테스트 서버(http://localhost)에서만 true. 앱(capacitor://localhost, https://localhost)은 아니다. */
 export function isLocalDev() {
-  return ['localhost', '127.0.0.1'].includes(location.hostname);
+  if (globalThis.YachooNative?.isNative) return false;
+  return location.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(location.hostname);
 }
 
 /** 서버에서 내 정보를 다시 받아 온다. */
