@@ -1,8 +1,18 @@
-// 계정: 구글 로그인, 닉네임·아바타, 포인트, 아이템 상점.
+// 계정: 구글·Apple 로그인, 닉네임·아바타, 포인트, 아이템 상점, 계정 삭제.
 
 import type { Env } from './index';
 import { HttpError, json, readJson } from './http';
 import { AuthError, SESSION_MS, bearerToken, hashToken, newSessionToken, verifyGoogleIdToken } from './auth';
+import {
+  type AppleSecrets,
+  appleClientIds,
+  exchangeAppleCode,
+  openToken,
+  revokeAppleToken,
+  sealToken,
+  verifyAppleIdToken,
+  verifyAppleNotification,
+} from './apple';
 import { DEFAULT_AVATAR, ITEM_BY_ID, parseAvatar, validateAvatar } from '../../web/js/avatar.js';
 import { RoomError, cleanName } from './match';
 import { NICKNAME_CHANGE_COST } from '../../web/js/points.js';
@@ -107,8 +117,11 @@ function defaultNickname(): string {
   return `선원${1000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 9000)}`;
 }
 
-/** 구글 계정(sub)으로 로그인. 처음이면 계정을 만든다. 이메일·이름은 저장하지 않는다. */
-async function issueSession(env: Env, sub: string): Promise<Response> {
+/**
+ * 로그인 계정(sub)으로 세션 발급. 처음이면 계정을 만든다. 이메일·이름은 저장하지 않는다.
+ * sub: 구글은 숫자 그대로, Apple은 'apple:…', 로컬 개발용은 'dev:…' (users.google_sub 칸)
+ */
+async function issueSession(env: Env, sub: string, afterLogin?: (user: UserRow) => Promise<void>): Promise<Response> {
   const now = Date.now();
   await env.DB.prepare(
     `INSERT INTO users (id, google_sub, nickname, avatar, created_at, updated_at)
@@ -119,6 +132,7 @@ async function issueSession(env: Env, sub: string): Promise<Response> {
   const user = await env.DB.prepare('SELECT * FROM users WHERE google_sub = ?').bind(sub).first<UserRow>();
   if (!user) throw new HttpError(500, '계정을 만들지 못했어요');
 
+  if (afterLogin) await afterLogin(user);
   const token = newSessionToken();
   await env.DB.batch([
     env.DB.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(
@@ -142,6 +156,109 @@ async function loginGoogle(request: Request, env: Env): Promise<Response> {
     if (err instanceof AuthError) throw new HttpError(401, err.message);
     throw err;
   }
+}
+
+function appleSecrets(env: Env): AppleSecrets | null {
+  if (!env.APPLE_TEAM_ID || !env.APPLE_SIGNIN_KEY_ID || !env.APPLE_SIGNIN_P8) return null;
+  return { teamId: env.APPLE_TEAM_ID, keyId: env.APPLE_SIGNIN_KEY_ID, p8: env.APPLE_SIGNIN_P8 };
+}
+
+/**
+ * Apple로 로그인 (iOS 앱). body: { identityToken, authorizationCode?, nonce? }
+ * authorizationCode가 있으면 refresh token으로 바꿔 암호화해 둔다 (계정 삭제 때 연결 해제용).
+ */
+async function loginApple(request: Request, env: Env): Promise<Response> {
+  const clientIds = appleClientIds(env.APPLE_CLIENT_IDS);
+  if (!clientIds.length) throw new HttpError(503, 'Apple 로그인이 아직 준비되지 않았어요');
+  const body = await readJson(request);
+  let claims;
+  try {
+    claims = await verifyAppleIdToken(body.identityToken, clientIds, body.nonce, Date.now());
+  } catch (err) {
+    if (err instanceof AuthError) throw new HttpError(401, err.message);
+    throw err;
+  }
+  const code = typeof body.authorizationCode === 'string' && body.authorizationCode.length < 2000 ? body.authorizationCode : null;
+  const secrets = appleSecrets(env);
+  const aud = claims.aud;
+  return issueSession(env, `apple:${claims.sub}`, async (user) => {
+    if (!code || !secrets) return;
+    try {
+      const refresh = await exchangeAppleCode(secrets, aud, code, Date.now());
+      if (!refresh) return;
+      await env.DB.prepare(
+        `INSERT INTO apple_tokens (user_id, token, client_id, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET token = excluded.token, client_id = excluded.client_id, created_at = excluded.created_at`,
+      )
+        .bind(user.id, await sealToken(secrets, refresh), aud, Date.now())
+        .run();
+    } catch (err) {
+      // 로그인 자체는 성공으로 둔다. 연결 해제용 토큰만 못 받은 것.
+      console.error('Apple refresh token 저장 실패', err);
+    }
+  });
+}
+
+/** 계정과 관련 기록을 모두 지운다 (포인트, 아이템, 랭킹, 혼자 하기 기록, 로그인). */
+export async function deleteUserData(env: Env, userId: string): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM user_items WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM point_log WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM rankings WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM solo_games WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM apple_tokens WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId),
+  ]);
+}
+
+/** Apple로 로그인한 계정이면 애플에 연결 해제를 요청한다. (실패해도 계정 삭제는 진행) */
+async function revokeApple(env: Env, userId: string): Promise<void> {
+  const secrets = appleSecrets(env);
+  const row = await env.DB.prepare('SELECT token, client_id FROM apple_tokens WHERE user_id = ?')
+    .bind(userId)
+    .first<{ token: string; client_id: string }>();
+  if (!row || !secrets) return;
+  const refresh = await openToken(secrets, row.token);
+  if (!refresh) return;
+  try {
+    await revokeAppleToken(secrets, row.client_id, refresh, Date.now());
+  } catch (err) {
+    console.error('Apple 연결 해제 실패', err);
+  }
+}
+
+/** 앱·웹에서 직접 계정 삭제. (App Store 심사 지침 5.1.1(v)) */
+async function deleteAccount(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(request, env);
+  if (user.google_sub.startsWith('apple:')) await revokeApple(env, user.id);
+  await deleteUserData(env, user.id);
+  return json({ deleted: true });
+}
+
+/**
+ * 애플 서버 알림. 사용자가 애플 설정에서 우리 앱 연결을 끊거나(consent-revoked) 애플 계정을 지우면(account-delete)
+ * 우리 계정도 지운다. 이메일 전달 설정 변경 알림은 이메일을 저장하지 않으니 무시한다.
+ */
+async function appleNotify(request: Request, env: Env): Promise<Response> {
+  let body: Record<string, unknown> = {};
+  try {
+    body = await readJson(request);
+  } catch {
+    return json({ ok: false }, 400);
+  }
+  try {
+    const event = await verifyAppleNotification(body.payload, appleClientIds(env.APPLE_CLIENT_IDS));
+    if (event.type === 'consent-revoked' || event.type === 'account-delete') {
+      const user = await env.DB.prepare('SELECT id FROM users WHERE google_sub = ?').bind(`apple:${event.sub}`).first<{ id: string }>();
+      if (user) await deleteUserData(env, user.id);
+    }
+  } catch (err) {
+    console.error('Apple 알림 처리 실패', err);
+    if (err instanceof AuthError) return json({ ok: false }, 400);
+    throw err;
+  }
+  return json({ ok: true });
 }
 
 /** 로컬 개발 전용 로그인. .dev.vars에 DEV_LOGIN=1이 있고, localhost로 접속할 때만 동작한다. */
@@ -254,6 +371,12 @@ export function accountRoute(key: string, request: Request, env: Env): Promise<R
       return loginGoogle(request, env);
     case 'POST /api/auth/dev':
       return loginDev(request, env);
+    case 'POST /api/auth/apple':
+      return loginApple(request, env);
+    case 'POST /api/auth/apple/notify':
+      return appleNotify(request, env);
+    case 'POST /api/me/delete':
+      return deleteAccount(request, env);
     case 'POST /api/auth/logout':
       return logout(request, env);
     case 'GET /api/me':

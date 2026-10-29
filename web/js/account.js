@@ -85,7 +85,67 @@ export async function api(path, body) {
 
 /** 로그인 기능을 쓸 수 있는지. (구글 클라이언트 ID가 있거나, 로컬 개발) */
 export function loginAvailable() {
-  return !!apiBase() && (!!GOOGLE_CLIENT_ID || isLocalDev());
+  return !!apiBase() && (!!GOOGLE_CLIENT_ID || isLocalDev() || appleLoginAvailable());
+}
+
+/* ---------------------------------------------------------------- Apple로 로그인 (iOS 앱 전용) */
+
+/** iOS 앱에 넣은 앱 번들 ID. 서버(wrangler.toml의 APPLE_CLIENT_IDS)와 같아야 한다. */
+const APPLE_CLIENT_ID = 'com.ohsang.play.yachoo';
+
+/** Capacitor iOS 앱이고 Apple 로그인 플러그인(@capacitor-community/apple-sign-in)이 있을 때만. 웹에서는 없음. */
+function applePlugin() {
+  const cap = globalThis.Capacitor;
+  if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== 'ios') return null;
+  return cap.Plugins?.SignInWithApple ?? null;
+}
+
+export function appleLoginAvailable() {
+  return !!applePlugin() && !!apiBase();
+}
+
+function randomHex(n) {
+  return [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Apple로 로그인. 사용자가 취소하면 null. 성공하면 내 정보. */
+export async function appleLogin() {
+  const plugin = applePlugin();
+  if (!plugin) throw new Error('Apple 로그인은 iPhone 앱에서만 쓸 수 있어요');
+  const nonce = randomHex(16);
+  let response;
+  try {
+    ({ response } = await plugin.authorize({
+      clientId: APPLE_CLIENT_ID,
+      redirectURI: 'https://yahchoo.ohsangplay.com',
+      scopes: '', // 이름·이메일은 받지 않는다
+      state: randomHex(8),
+      nonce,
+    }));
+  } catch (err) {
+    // 사용자가 창을 닫음 (ASAuthorizationError.canceled = 1001)
+    if (String(err?.code ?? err?.message ?? '').includes('1001') || /cancel/i.test(String(err?.message ?? ''))) return null;
+    throw new Error('Apple 로그인에 실패했어요. 잠시 후 다시 시도해 주세요');
+  }
+  if (!response?.identityToken) throw new Error('Apple 로그인 정보를 받지 못했어요');
+  const data = await api('/api/auth/apple', {
+    identityToken: response.identityToken,
+    authorizationCode: response.authorizationCode ?? null,
+    nonce,
+  });
+  setSession(data.token, data.me);
+  return data.me;
+}
+
+/** 계정 삭제: 포인트·아이템·랭킹·기록을 모두 지우고 이 기기에서도 로그아웃한다. Apple 계정은 연결도 해제된다. */
+export async function deleteAccount() {
+  await api('/api/me/delete', {});
+  setSession(null, null);
+  try {
+    window.google?.accounts?.id?.disableAutoSelect();
+  } catch {
+    // 무시
+  }
 }
 
 export function isLocalDev() {

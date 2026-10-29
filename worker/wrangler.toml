@@ -25,6 +25,10 @@ new_sqlite_classes = ["YachtRoom"]
 
 [vars]
 # 서버를 쓸 수 있는 웹 주소. 저장소 이름을 바꾸거나 도메인을 붙이면 여기에 추가한다.
-ALLOWED_ORIGINS = "https://yahchoo.ohsangplay.com,https://yahchoo.github.io,http://localhost,http://127.0.0.1"
+# https://localhost(안드로이드 앱), capacitor://localhost(iOS 앱)
+ALLOWED_ORIGINS = "https://yahchoo.ohsangplay.com,https://yahchoo.github.io,http://localhost,http://127.0.0.1,https://localhost,capacitor://localhost"
+# Apple로 로그인: 허용하는 앱 번들 ID (쉼표로 구분). 연결 해제용 비밀값(APPLE_TEAM_ID, APPLE_SIGNIN_KEY_ID, APPLE_SIGNIN_P8)은
+# 배포 때 GitHub Secrets에서 Worker 비밀값으로 넣는다.
+APPLE_CLIENT_IDS = "com.ohsang.play.yachoo"
 # 구글 로그인 OAuth 클라이언트 ID. 배포 때 GitHub Actions가 저장소 변수 GOOGLE_CLIENT_ID 값으로 채운다.
 GOOGLE_CLIENT_ID = ""

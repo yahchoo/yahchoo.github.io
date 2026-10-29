@@ -122,6 +122,33 @@ jobs:
             echo "url=$url" >> "$GITHUB_OUTPUT"
           fi
 
+      # Apple로 로그인: 계정 삭제 때 애플에 연결 해제를 요청하는 데 쓰는 비밀값. 없으면 로그인만 되고 해제는 건너뛴다.
+      # 저장소 Secrets: APPLE_TEAM_ID, APPLE_SIGNIN_KEY_ID, APPLE_SIGNIN_P8 (p8 파일 내용 그대로)
+      - name: Set Apple sign-in secrets
+        if: steps.cf.outputs.ready == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNIN_KEY_ID: ${{ secrets.APPLE_SIGNIN_KEY_ID }}
+          APPLE_SIGNIN_P8: ${{ secrets.APPLE_SIGNIN_P8 }}
+        run: |
+          missing=""
+          [ -z "$APPLE_TEAM_ID" ] && missing="$missing APPLE_TEAM_ID"
+          [ -z "$APPLE_SIGNIN_KEY_ID" ] && missing="$missing APPLE_SIGNIN_KEY_ID"
+          [ -z "$APPLE_SIGNIN_P8" ] && missing="$missing APPLE_SIGNIN_P8"
+          if [ -n "$missing" ]; then
+            echo "::notice::저장소 Secrets에$missing 이 없어 Apple 연결 해제 없이 배포합니다. (Apple 로그인 자체는 동작)"
+            exit 0
+          fi
+          if ! printf '%s' "$APPLE_SIGNIN_P8" | grep -q 'BEGIN PRIVATE KEY'; then
+            echo "::warning::APPLE_SIGNIN_P8은 p8 파일 내용 전체(-----BEGIN PRIVATE KEY----- 부터)를 넣어야 해요. 건너뜁니다."
+            exit 0
+          fi
+          umask 077
+          jq -n --arg t "$APPLE_TEAM_ID" --arg k "$APPLE_SIGNIN_KEY_ID" --arg p "$APPLE_SIGNIN_P8" \
+            '{APPLE_TEAM_ID: $t, APPLE_SIGNIN_KEY_ID: $k, APPLE_SIGNIN_P8: $p}' > "$RUNNER_TEMP/apple-secrets.json"
+          npx wrangler secret bulk "$RUNNER_TEMP/apple-secrets.json"
+          rm -f "$RUNNER_TEMP/apple-secrets.json"
+
       - name: Health check
         if: steps.deploy.outputs.url != ''
         env:

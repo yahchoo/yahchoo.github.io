@@ -837,3 +837,12 @@ th.now { box-shadow: inset 0 4px 0 var(--signal-yellow); }
 .watcher-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
 .watcher-list .watcher { width: 100%; padding: 6px 12px 6px 6px; border-radius: var(--radius-m); }
 .watcher-list .empty { color: var(--ink-soft); text-align: center; padding: 12px 0; }
+
+/* Apple로 로그인 (iOS 앱에서만 보인다). Apple 디자인 지침: 검은 바탕 흰 글자 */
+.apple-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; margin-bottom: 10px; background: #000; color: #fff; border-radius: 8px; font-weight: 600;
+}
+.apple-btn svg { width: 16px; height: 19px; margin-top: -2px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .apple-btn { background: #fff; color: #000; } }
+.closet-delete { display: block; margin: 6px auto 0; font-size: 13px; color: var(--ink-soft); }

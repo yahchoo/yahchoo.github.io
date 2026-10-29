@@ -16,7 +16,7 @@ import { bestScore, claimSolo, clearSoloSaves, fetchRankings, hasSoloInProgress,
 import { RoomConnection, activeRoom, apiBase, createRoom } from './net.js';
 import { ITEMS, ITEM_BY_ID, SLOTS, renderAvatar } from './avatar.js';
 import {
-  authToken, buyItem, currentUser, devLogin, isLocalDev, loginAvailable, logout, mountGoogleButton,
+  appleLogin, appleLoginAvailable, authToken, buyItem, currentUser, deleteAccount, devLogin, isLocalDev, loginAvailable, logout, mountGoogleButton,
   onAccountChange, refreshMe, saveProfile, updatePoints,
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
@@ -1831,6 +1831,7 @@ function openLogin({ after = null } = {}) {
   ];
   $('login-avatars').replaceChildren(...samples.map((a) => miniAvatar(a, 56)));
   $('dev-login').hidden = !(isLocalDev() && !GOOGLE_CLIENT_ID);
+  $('apple-login').hidden = !appleLoginAvailable();
   openOverlay('login');
   mountGoogleButton($('google-btn'), {
     onDone: loginDone,
@@ -1839,6 +1840,19 @@ function openLogin({ after = null } = {}) {
     },
   });
 }
+
+$('apple-login').addEventListener('click', async () => {
+  const btn = $('apple-login');
+  btn.disabled = true;
+  $('login-error').textContent = '';
+  try {
+    if (await appleLogin()) loginDone();
+  } catch (err) {
+    $('login-error').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 $('dev-login').addEventListener('click', async () => {
   try {
@@ -2098,6 +2112,22 @@ $('closet-reset').addEventListener('click', () => {
 });
 
 $('closet-rename').addEventListener('click', () => openNickname({ after: renderCloset }));
+
+$('delete-account').addEventListener('click', () => {
+  confirmExit(
+    '계정을 삭제할까요? 포인트, 산 아이템, 아바타, 랭킹 기록이 모두 지워지고 되돌릴 수 없어요.',
+    async () => {
+      try {
+        await deleteAccount();
+        showHome();
+        toast('계정을 삭제했어요');
+      } catch (err) {
+        toast(err.message ?? '잠시 후 다시 시도해 주세요');
+      }
+    },
+    '삭제하기',
+  );
+});
 
 $('logout').addEventListener('click', () => {
   confirmExit('로그아웃할까요? 포인트와 아바타는 계정에 그대로 남아 있어요.', async () => {

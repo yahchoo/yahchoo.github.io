@@ -30,6 +30,12 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   /** 로컬 개발용 로그인(.dev.vars). 배포에서는 쓰지 않는다. */
   DEV_LOGIN?: string;
+  /** Apple로 로그인: 허용하는 앱 번들 ID (쉼표로 구분) */
+  APPLE_CLIENT_IDS?: string;
+  /** Apple 연결 해제용 비밀값 (배포 때 GitHub Secrets에서 넣는다). 없으면 로그인만 되고 해제는 건너뛴다. */
+  APPLE_TEAM_ID?: string;
+  APPLE_SIGNIN_KEY_ID?: string;
+  APPLE_SIGNIN_P8?: string;
 }
 
 function isAllowedOrigin(origin: string, env: Env): boolean {

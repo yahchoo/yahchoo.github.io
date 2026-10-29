@@ -124,6 +124,7 @@
       <div class="item-grid" id="item-grid" role="list"></div>
       <p class="closet-help">게임을 끝내면 포인트를 받아요. 같이 하기에서 이기면 보너스를 더 받아요.</p>
       <button class="link closet-logout" id="logout">로그아웃</button>
+      <button class="link closet-delete" id="delete-account">계정 삭제</button>
     </div>
     <div class="closet-bar" id="closet-bar" hidden>
       <p id="closet-bar-text"></p>
@@ -255,10 +256,14 @@
       <div class="login-avatars" aria-hidden="true" id="login-avatars"></div>
       <h2 id="login-title">로그인하고 아바타 꾸미기</h2>
       <p class="login-lead" id="login-lead">게임을 끝낼 때마다 포인트를 받아요. 포인트로 동물 캐릭터를 꾸미고, 랭킹에는 닉네임과 아바타로 올라가요.</p>
+      <button class="btn apple-btn wide" id="apple-login" type="button" hidden>
+        <svg viewBox="0 0 17 20" aria-hidden="true"><path fill="currentColor" d="M14.1 10.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9C3.6 4.8 1.9 5.9 1 7.5c-1.9 3.3-.5 8.1 1.3 10.8.9 1.3 2 2.7 3.4 2.7 1.4-.1 1.9-.9 3.5-.9s2.1.9 3.5.9c1.5 0 2.4-1.3 3.3-2.6 1-1.5 1.5-3 1.5-3-.1 0-2.9-1.1-2.9-4.3zM11.5 2.9c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3 1.6-.7.8-1.3 2-1.1 3.2 1.1.1 2.3-.6 3-1.5z"/></svg>
+        <span>Apple로 로그인</span>
+      </button>
       <div class="google-btn" id="google-btn"></div>
       <button class="btn btn-secondary wide" id="dev-login" hidden>개발용 로그인 (localhost)</button>
       <p class="form-error" id="login-error" role="alert"></p>
-      <p class="login-note">구글 계정의 이메일과 이름은 저장하지 않아요. <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>
+      <p class="login-note">구글·Apple 계정의 이메일과 이름은 저장하지 않아요. <a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>
       <button class="btn btn-ghost wide" data-close>나중에 할게요</button>
     </div>
   </div>
