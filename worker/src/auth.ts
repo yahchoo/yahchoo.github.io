@@ -47,10 +47,24 @@ export const fetchGoogleJwks: JwksFetcher = async () => {
   return keys;
 };
 
-/** 구글 ID 토큰을 검증하고 내용(sub 등)을 돌려준다. */
+/**
+ * 로그인을 받아 줄 구글 클라이언트 ID 목록.
+ * GOOGLE_CLIENT_IDS(쉼표로 구분: 웹, iOS 앱 등)가 있으면 그 값, 없으면 GOOGLE_CLIENT_ID 하나.
+ */
+export function googleClientIds(env: { GOOGLE_CLIENT_IDS?: string; GOOGLE_CLIENT_ID?: string }): string[] {
+  const list = (env.GOOGLE_CLIENT_IDS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (list.length) return list;
+  const one = (env.GOOGLE_CLIENT_ID ?? '').trim();
+  return one ? [one] : [];
+}
+
+/** 구글 ID 토큰을 검증하고 내용(sub 등)을 돌려준다. clientIds: 토큰의 aud로 받아 줄 클라이언트 ID(들) */
 export async function verifyGoogleIdToken(
   token: unknown,
-  clientId: string,
+  clientIds: string | readonly string[],
   now: number,
   getKeys: JwksFetcher = fetchGoogleJwks,
 ): Promise<GoogleClaims> {
@@ -67,7 +81,8 @@ export async function verifyGoogleIdToken(
   if (!ok) throw new AuthError('로그인 정보가 올바르지 않아요');
 
   if (!GOOGLE_ISSUERS.includes(claims.iss)) throw new AuthError('구글 로그인이 아니에요');
-  if (claims.aud !== clientId) throw new AuthError('이 사이트의 로그인이 아니에요');
+  const allowed = typeof clientIds === 'string' ? [clientIds] : clientIds;
+  if (typeof claims.aud !== 'string' || !allowed.includes(claims.aud)) throw new AuthError('이 사이트의 로그인이 아니에요');
   if (typeof claims.exp !== 'number' || claims.exp * 1000 < now - 60_000) throw new AuthError('로그인이 만료됐어요. 다시 로그인해 주세요');
   if (typeof claims.sub !== 'string' || !claims.sub) throw new AuthError('로그인 정보가 올바르지 않아요');
   return claims;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AuthError, hashToken, newSessionToken, verifyGoogleIdToken } from '../src/auth';
+import { AuthError, googleClientIds, hashToken, newSessionToken, verifyGoogleIdToken } from '../src/auth';
 
 const CLIENT = 'test-client.apps.googleusercontent.com';
 const NOW = Date.UTC(2026, 9, 26, 12);
@@ -45,6 +45,30 @@ describe('구글 ID 토큰 검증', () => {
     await expect(verifyGoogleIdToken(forged, CLIENT, NOW, keys)).rejects.toThrow(AuthError);
     await expect(verifyGoogleIdToken(await sign(good, 'unknown'), CLIENT, NOW, keys)).rejects.toThrow(AuthError);
     await expect(verifyGoogleIdToken('nope', CLIENT, NOW, keys)).rejects.toThrow(AuthError);
+  });
+});
+
+describe('여러 클라이언트 ID (웹 + 앱)', () => {
+  const IOS = 'ios-client.apps.googleusercontent.com';
+
+  it('목록에 있는 클라이언트 ID로 받은 토큰은 모두 통과', async () => {
+    const ids = [CLIENT, IOS];
+    expect((await verifyGoogleIdToken(await sign(good), ids, NOW, keys)).sub).toBe('1234567890');
+    expect((await verifyGoogleIdToken(await sign({ ...good, aud: IOS }), ids, NOW, keys)).sub).toBe('1234567890');
+  });
+
+  it('목록에 없으면 거절, 빈 목록이면 모두 거절', async () => {
+    await expect(verifyGoogleIdToken(await sign({ ...good, aud: 'other' }), [CLIENT, IOS], NOW, keys)).rejects.toThrow(AuthError);
+    await expect(verifyGoogleIdToken(await sign(good), [], NOW, keys)).rejects.toThrow(AuthError);
+    await expect(verifyGoogleIdToken(await sign({ ...good, aud: [CLIENT] }), [CLIENT], NOW, keys)).rejects.toThrow(AuthError);
+  });
+
+  it('GOOGLE_CLIENT_IDS(쉼표 구분)가 우선, 없으면 GOOGLE_CLIENT_ID', () => {
+    expect(googleClientIds({ GOOGLE_CLIENT_IDS: ` ${CLIENT} , ${IOS},`, GOOGLE_CLIENT_ID: 'x' })).toEqual([CLIENT, IOS]);
+    expect(googleClientIds({ GOOGLE_CLIENT_IDS: '', GOOGLE_CLIENT_ID: CLIENT })).toEqual([CLIENT]);
+    expect(googleClientIds({ GOOGLE_CLIENT_ID: CLIENT })).toEqual([CLIENT]);
+    expect(googleClientIds({ GOOGLE_CLIENT_IDS: ' , ', GOOGLE_CLIENT_ID: '' })).toEqual([]);
+    expect(googleClientIds({})).toEqual([]);
   });
 });
 

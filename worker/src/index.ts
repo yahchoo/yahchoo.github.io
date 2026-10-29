@@ -15,7 +15,7 @@ import {
   weekEnd,
   weekStart,
 } from './solo';
-import { HttpError, json, readJson } from './http';
+import { HttpError, json, originAllowed, readJson } from './http';
 import { accountRoute, grantPoints, optionalUser, requireUser } from './account';
 import { parseAvatar } from '../../web/js/avatar.js';
 import { scorePoints } from '../../web/js/points.js';
@@ -26,22 +26,16 @@ export interface Env {
   DB: D1Database;
   ROOMS: DurableObjectNamespace<YachtRoom>;
   ALLOWED_ORIGINS?: string;
-  /** 구글 로그인 OAuth 클라이언트 ID. 없으면 로그인을 쓸 수 없다. */
+  /** 구글 로그인 OAuth 클라이언트 ID(웹). GOOGLE_CLIENT_IDS가 비어 있을 때 쓴다. 둘 다 없으면 로그인을 쓸 수 없다. */
   GOOGLE_CLIENT_ID?: string;
+  /** 로그인을 받아 줄 구글 클라이언트 ID 목록 (쉼표로 구분: 웹, iOS 앱 등) */
+  GOOGLE_CLIENT_IDS?: string;
   /** 로컬 개발용 로그인(.dev.vars). 배포에서는 쓰지 않는다. */
   DEV_LOGIN?: string;
 }
 
 function isAllowedOrigin(origin: string, env: Env): boolean {
-  const allowed = (env.ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return allowed.some(
-    (entry) =>
-      origin === entry ||
-      ((entry.endsWith('://localhost') || entry.endsWith('://127.0.0.1')) && origin.startsWith(`${entry}:`)),
-  );
+  return originAllowed(origin, env.ALLOWED_ORIGINS);
 }
 
 function corsHeaders(request: Request, env: Env): Record<string, string> {

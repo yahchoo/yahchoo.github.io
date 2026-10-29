@@ -25,6 +25,11 @@ new_sqlite_classes = ["YachtRoom"]
 
 [vars]
 # 서버를 쓸 수 있는 웹 주소. 저장소 이름을 바꾸거나 도메인을 붙이면 여기에 추가한다.
-ALLOWED_ORIGINS = "https://yahchoo.ohsangplay.com,https://yahchoo.github.io,http://localhost,http://127.0.0.1"
-# 구글 로그인 OAuth 클라이언트 ID. 배포 때 GitHub Actions가 저장소 변수 GOOGLE_CLIENT_ID 값으로 채운다.
+# 앱(Capacitor)은 Android가 https://localhost, iOS가 capacitor://localhost로 요청한다.
+ALLOWED_ORIGINS = "https://yahchoo.ohsangplay.com,https://yahchoo.github.io,http://localhost,http://127.0.0.1,https://localhost,capacitor://localhost"
+# 구글 로그인 OAuth 클라이언트 ID(웹). 배포 때 GitHub Actions가 저장소 변수 GOOGLE_CLIENT_ID 값으로 채운다.
 GOOGLE_CLIENT_ID = ""
+# 로그인을 받아 줄 클라이언트 ID 목록(쉼표로 구분). 비어 있으면 GOOGLE_CLIENT_ID 하나만 받는다.
+# 배포 때 GitHub Actions가 웹 ID + 저장소 변수 GOOGLE_APP_CLIENT_IDS(iOS 앱 등)로 채운다.
+# (Android 앱은 웹 클라이언트 ID로 토큰을 받으므로 따로 넣지 않아도 된다)
+GOOGLE_CLIENT_IDS = ""

@@ -94,18 +94,31 @@ jobs:
         run: npx wrangler d1 migrations apply DB --remote
 
       # 구글 로그인 클라이언트 ID (공개값). 저장소 변수 GOOGLE_CLIENT_ID가 있으면 그 값을 우선 쓴다.
+      # 앱: 저장소 변수 GOOGLE_APP_CLIENT_IDS(쉼표로 구분, 예: iOS 클라이언트 ID)를 웹 ID와 함께 허용 목록(GOOGLE_CLIENT_IDS)에 넣는다.
+      # Android 앱은 웹 클라이언트 ID로 토큰을 받으므로 따로 넣지 않아도 된다.
       - name: Set Google client ID
         if: steps.cf.outputs.ready == 'true'
         env:
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || '994205737094-50gr21rv5gd4jmrk3drgq3462k6k2rj7.apps.googleusercontent.com' }}
+          GOOGLE_APP_CLIENT_IDS: ${{ vars.GOOGLE_APP_CLIENT_IDS || '' }}
         run: |
+          id_ok() { printf '%s' "$1" | grep -Eq '^[0-9A-Za-z._-]+\.apps\.googleusercontent\.com$'; }
           if [ -z "$GOOGLE_CLIENT_ID" ]; then
             echo "::notice::저장소 변수 GOOGLE_CLIENT_ID가 없어 로그인 없이 배포합니다."
-          elif ! printf '%s' "$GOOGLE_CLIENT_ID" | grep -Eq '^[0-9A-Za-z._-]+\.apps\.googleusercontent\.com$'; then
+          elif ! id_ok "$GOOGLE_CLIENT_ID"; then
             echo "::error::GOOGLE_CLIENT_ID 형식이 이상해요. '...apps.googleusercontent.com'으로 끝나는 클라이언트 ID를 넣어 주세요."
             exit 1
           else
+            ids="$GOOGLE_CLIENT_ID"
+            for app_id in $(printf '%s' "$GOOGLE_APP_CLIENT_IDS" | tr ',' ' '); do
+              if ! id_ok "$app_id"; then
+                echo "::error::GOOGLE_APP_CLIENT_IDS에 형식이 이상한 값이 있어요: $app_id"
+                exit 1
+              fi
+              ids="$ids,$app_id"
+            done
             sed -i "s/^GOOGLE_CLIENT_ID = \"\"/GOOGLE_CLIENT_ID = \"$GOOGLE_CLIENT_ID\"/" wrangler.toml
+            sed -i "s/^GOOGLE_CLIENT_IDS = \"\"/GOOGLE_CLIENT_IDS = \"$ids\"/" wrangler.toml
             grep '^GOOGLE_CLIENT_ID' wrangler.toml
           fi
 

@@ -2,7 +2,7 @@
 
 import type { Env } from './index';
 import { HttpError, json, readJson } from './http';
-import { AuthError, SESSION_MS, bearerToken, hashToken, newSessionToken, verifyGoogleIdToken } from './auth';
+import { AuthError, SESSION_MS, bearerToken, googleClientIds, hashToken, newSessionToken, verifyGoogleIdToken } from './auth';
 import { DEFAULT_AVATAR, ITEM_BY_ID, parseAvatar, validateAvatar } from '../../web/js/avatar.js';
 import { RoomError, cleanName } from './match';
 import { NICKNAME_CHANGE_COST } from '../../web/js/points.js';
@@ -133,10 +133,11 @@ async function issueSession(env: Env, sub: string): Promise<Response> {
 }
 
 async function loginGoogle(request: Request, env: Env): Promise<Response> {
-  if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, '로그인이 아직 준비되지 않았어요');
+  const clientIds = googleClientIds(env);
+  if (!clientIds.length) throw new HttpError(503, '로그인이 아직 준비되지 않았어요');
   const body = await readJson(request);
   try {
-    const claims = await verifyGoogleIdToken(body.credential, env.GOOGLE_CLIENT_ID, Date.now());
+    const claims = await verifyGoogleIdToken(body.credential, clientIds, Date.now());
     return await issueSession(env, claims.sub);
   } catch (err) {
     if (err instanceof AuthError) throw new HttpError(401, err.message);
