@@ -91,7 +91,7 @@ export function loginAvailable() {
 /* ---------------------------------------------------------------- Apple로 로그인 (iOS 앱 전용) */
 
 /** iOS 앱에 넣은 앱 번들 ID. 서버(wrangler.toml의 APPLE_CLIENT_IDS)와 같아야 한다. */
-const APPLE_CLIENT_ID = 'com.ohsang.play.yachoo';
+const APPLE_CLIENT_ID = 'com.ohsang.play.yahchoo';
 
 /** Capacitor iOS 앱이고 Apple 로그인 플러그인(@capacitor-community/apple-sign-in)이 있을 때만. 웹에서는 없음. */
 function applePlugin() {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AuthError } from '../src/auth';
 import { appleClientSecret, openToken, sealToken, verifyAppleIdToken, verifyAppleNotification } from '../src/apple';
 
-const APP = 'com.ohsang.play.yachoo';
+const APP = 'com.ohsang.play.yahchoo';
 const NOW = Date.UTC(2026, 9, 29, 12);
 
 function b64url(data: Uint8Array | ArrayBuffer | string): string {
