@@ -314,8 +314,17 @@ function renderGame(m) {
   } else if (m.finished) {
     turn.append(el('span', '', '게임 끝'));
   }
-  if (m.watching) turn.append(el('span', 'tag watch', '관전 중'));
-  else if (m.watchers > 0) turn.append(el('span', 'tag watch', `관전 ${m.watchers}`));
+  // 관전 인원: 누르면 누가 보고 있는지 목록이 뜬다.
+  if (m.watching || m.watchers > 0) {
+    const tag = el('button', 'tag watch', m.watching ? `관전 중 · ${m.watchers}명` : `관전 ${m.watchers}`);
+    tag.type = 'button';
+    tag.setAttribute('aria-label', `관전 ${m.watchers}명 보기`);
+    tag.addEventListener('click', () => {
+      renderWatcherList();
+      openOverlay('watchers');
+    });
+    turn.append(tag);
+  }
 
   // 주사위
   const rolled = ui.lastRollSeq !== null && m.rollSeq > ui.lastRollSeq;
@@ -1392,6 +1401,7 @@ function onRoomState(view) {
   const prev = room.view;
   room.view = view;
   if (view.you < 0 && !view.spectator) return;
+  if (!$('watchers').hidden) renderWatcherList();
 
   // 관전으로 들어왔거나 자리에 앉았을 때 알려 준다.
   if (ui.sitRequested && view.spectator) {
@@ -1592,8 +1602,8 @@ function renderLobby(view) {
   else if (isHost) note = '모두 모였어요. 시작해 볼까요?';
   else note = '모두 모였어요. 방장이 시작하면 게임이 시작돼요.';
   if (watching) note = missing > 0 ? `관전 중이에요. 빈 자리가 ${missing}개 있어서 앉을 수 있어요.` : '관전 중이에요. 게임이 시작되면 점수판을 같이 볼 수 있어요.';
-  else if (view.watchers > 0) note += ` (관전 ${view.watchers}명)`;
   $('lobby-note').textContent = note;
+  renderLobbyWatchers(view);
 
   const start = $('start-game');
   start.hidden = !isHost;
@@ -1604,6 +1614,47 @@ function renderLobby(view) {
   const goWatch = $('go-watch');
   goWatch.hidden = watching;
   goWatch.disabled = false;
+}
+
+/* ---------------------------------------------------------------- 관전자 목록 */
+
+function watcherChip(w) {
+  const chip = el('span', `watcher${w.me ? ' me' : ''}`);
+  if (w.avatar) chip.append(miniAvatar(w.avatar, 22));
+  else chip.append(el('span', 'watcher-eye', ''));
+  chip.append(el('span', 'nm', w.name));
+  if (w.me) chip.append(el('span', 'tag me', '나'));
+  return chip;
+}
+
+/** 대기실: 자리 목록 아래에 관전자 이름을 바로 보여 준다. */
+function renderLobbyWatchers(view) {
+  const box = $('lobby-watchers');
+  const list = view.watcherList ?? [];
+  box.hidden = list.length === 0;
+  box.replaceChildren();
+  if (!list.length) return;
+  box.append(el('h3', '', `관전 ${list.length}명`));
+  const chips = el('div', 'watcher-chips');
+  for (const w of list) chips.append(watcherChip(w));
+  box.append(chips);
+}
+
+/** 게임 중: '관전 N'을 누르면 뜨는 목록. 열려 있는 동안 들어오고 나가는 것도 바로 반영된다. */
+function renderWatcherList() {
+  const list = room.view?.watcherList ?? [];
+  $('watchers-title').textContent = `관전 ${list.length}명`;
+  const ul = $('watcher-list');
+  ul.replaceChildren();
+  if (!list.length) {
+    ul.append(el('li', 'empty', '지금은 관전하는 사람이 없어요'));
+    return;
+  }
+  for (const w of list) {
+    const li = el('li');
+    li.append(watcherChip(w));
+    ul.append(li);
+  }
 }
 
 /* ---------------------------------------------------------------- 결과 */

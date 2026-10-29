@@ -7,6 +7,7 @@ import {
   RoomError,
   type RoomState,
   attachAccount,
+  cleanName,
   cheerTarget,
   createRoom,
   decideRewards,
@@ -32,10 +33,15 @@ const IDLE_MS = 15 * 60 * 1000;
 /** 사람이 접속해 있어도 이 시간 넘게 아무 행동이 없으면 지운다. */
 const ABANDON_MS = 2 * 60 * 60 * 1000;
 
-/** 관전자는 playerId가 null. 로그인한 관전자는 userId가 있다 (야유에 포인트를 쓴다). */
+/**
+ * 관전자는 playerId가 null. name은 들어올 때 입력한 닉네임 (관전자 목록에 보인다).
+ * 로그인한 관전자는 userId(야유 포인트)와 avatar가 있다. 누가 야유했는지는 어디에도 남기지 않는다.
+ */
 interface Attachment {
   playerId: string | null;
+  name?: string;
   userId?: string;
+  avatar?: unknown;
 }
 
 const WATCH_TAG = 'watch';
@@ -94,13 +100,24 @@ export class YachtRoom extends DurableObject<Env> {
 
   private broadcast(state: RoomState, except?: WebSocket): void {
     const now = Date.now();
-    const watchers = this.watcherCount(except);
+    // 관전자 목록 (들어온 순서). 받는 사람이 관전자면 자기 줄에 me 표시.
+    const watchSockets = this.ctx
+      .getWebSockets(WATCH_TAG)
+      .filter((s) => s !== except && s.readyState === WebSocket.OPEN)
+      .map((s) => ({ s, att: s.deserializeAttachment() as Attachment | null }))
+      .filter((w) => w.att);
+    const watchers = watchSockets.length;
     for (const ws of this.ctx.getWebSockets()) {
       if (ws === except) continue;
       const att = ws.deserializeAttachment() as Attachment | null;
       if (!att) continue;
+      const watcherList = watchSockets.map((w) => ({
+        name: w.att?.name || '관전자',
+        avatar: w.att?.avatar ?? null,
+        me: w.s === ws,
+      }));
       try {
-        ws.send(JSON.stringify(viewFor(state, att.playerId, now, watchers)));
+        ws.send(JSON.stringify({ ...viewFor(state, att.playerId, now, watchers), watcherList }));
       } catch {
         // 이미 닫힌 연결
       }
@@ -151,7 +168,13 @@ export class YachtRoom extends DurableObject<Env> {
         const pair = new WebSocketPair();
         const [client, server] = [pair[0], pair[1]];
         this.ctx.acceptWebSocket(server, [WATCH_TAG]);
-        server.serializeAttachment({ playerId: null } satisfies Attachment);
+        let name = '관전자';
+        try {
+          name = cleanName(url.searchParams.get('name') ?? '');
+        } catch {
+          // 이름이 없거나 이상하면 '관전자'
+        }
+        server.serializeAttachment({ playerId: null, name } satisfies Attachment);
         server.send(JSON.stringify({ type: 'welcome', playerId: null, spectator: true }));
         this.broadcast(state);
         return new Response(null, { status: 101, webSocket: client });
@@ -301,7 +324,10 @@ export class YachtRoom extends DurableObject<Env> {
       if (typeof data.token !== 'string' || !/^[A-Za-z0-9_-]{20,100}$/.test(data.token)) return;
       const user = await userFromToken(this.env, data.token);
       if (!user) return;
-      ws.serializeAttachment({ playerId: null, userId: user.id } satisfies Attachment);
+      ws.serializeAttachment({ ...att, playerId: null, userId: user.id, avatar: parseAvatar(user.avatar) } satisfies Attachment);
+      // 관전자 목록에 아바타가 보이게 다시 알린다.
+      const state = await this.load();
+      if (state) this.broadcast(state);
       return;
     }
 
