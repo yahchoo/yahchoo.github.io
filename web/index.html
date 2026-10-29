@@ -300,6 +300,16 @@
     </div>
   </div>
 
+  <!-- 앱(iOS) 처음 실행: 추적 동의 창 전에 보여 주는 안내 -->
+  <div class="overlay" id="att" hidden>
+    <div class="sheet-card att-card" role="dialog" aria-modal="true" aria-labelledby="att-title">
+      <h2 id="att-title">광고 안내</h2>
+      <p>오늘도 야추는 무료로 운영하기 위해 광고를 보여 줘요.</p>
+      <p>다음 화면에서 <strong>허용</strong>하면 관심 있을 만한 광고가 나오고, 허용하지 않아도 게임은 똑같이 할 수 있어요.</p>
+      <button class="btn btn-primary wide" id="att-ok" type="button">계속</button>
+    </div>
+  </div>
+
   <p class="conn-banner" id="conn-banner" hidden></p>
   <p class="flash" id="flash" role="status" aria-live="polite" hidden></p>
 </body>

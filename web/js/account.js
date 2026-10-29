@@ -95,6 +95,8 @@ const APPLE_CLIENT_ID = 'com.ohsang.play.yahchoo';
 
 /** Capacitor iOS 앱이고 Apple 로그인 플러그인(@capacitor-community/apple-sign-in)이 있을 때만. 웹에서는 없음. */
 function applePlugin() {
+  const app = globalThis.YachooNative;
+  if (app?.isNative && app.platform === 'ios' && app.SignInWithApple) return app.SignInWithApple;
   const cap = globalThis.Capacitor;
   if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== 'ios') return null;
   return cap.Plugins?.SignInWithApple ?? null;

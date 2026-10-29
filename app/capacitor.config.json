@@ -1,0 +1,15 @@
+{
+  "appId": "com.ohsang.play.yahchoo",
+  "appName": "오늘도 야추",
+  "webDir": "www",
+  "backgroundColor": "#1b2f5b",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#1b2f5b",
+    "scrollEnabled": true,
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "AdMob": {}
+  }
+}

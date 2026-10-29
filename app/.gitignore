@@ -1,0 +1,6 @@
+node_modules/
+www/
+www-ads.json
+build/
+*.ipa
+*.xcarchive

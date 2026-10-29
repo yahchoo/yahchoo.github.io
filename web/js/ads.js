@@ -3,7 +3,12 @@
 // 값이 없으면 광고 자리는 숨겨 둔 채로 아무것도 불러오지 않는다.
 // 광고는 버튼을 잘못 누르기 쉬운 곳(굴리기 버튼·점수판 칸 옆, 팝업)에는 두지 않는다.
 // 게임 화면: 휴대폰은 점수판 맨 아래, PC는 주사위 아래 빈 공간. (.ad-mobile / .ad-desktop)
+//
+// 앱(iOS·Android)에서는 애드센스 대신 AdMob 배너를 쓴다. 같은 광고 자리가 화면에 보이는 동안
+// 화면 아래에 배너를 띄우고, 배너 높이만큼 아래 여백을 줘서 버튼·점수판을 가리지 않게 한다.
+// 결과 같은 팝업이 열리면 배너를 숨긴다.
 import * as config from './config.js';
+import { native } from './native.js';
 
 const CLIENT = /^ca-pub-\d{10,20}$/.test(config.ADSENSE_CLIENT ?? '') ? config.ADSENSE_CLIENT : '';
 const SLOTS = config.ADSENSE_SLOTS && typeof config.ADSENSE_SLOTS === 'object' ? config.ADSENSE_SLOTS : {};
@@ -21,6 +26,10 @@ function addScript() {
 
 /** 화면이 보일 때 그 화면의 광고 자리를 한 번 채운다. (숨겨진 자리는 크기가 0이라 채울 수 없다) */
 export function fillAds(screenId) {
+  if (native) {
+    watchNativeSlots(screenId);
+    return;
+  }
   if (!CLIENT) return;
   const root = document.getElementById(screenId);
   if (!root) return;
@@ -49,4 +58,124 @@ export function fillAds(screenId) {
       // 광고 차단 등: 자리만 남는다
     }
   }
+}
+
+/* ---------------------------------------------------------------- 앱: AdMob 배너 */
+
+const ATT_ASKED_KEY = 'yacht.attAsked';
+const nativeAds = { ready: false, shown: false, created: false, visible: new Set(), observer: null, overlay: false };
+
+function setBannerSpace(px) {
+  document.documentElement.style.setProperty('--app-banner', `${Math.round(px)}px`);
+}
+
+function updateBanner() {
+  const AdMob = native?.AdMob;
+  if (!AdMob || !nativeAds.ready) return;
+  const want = nativeAds.visible.size > 0 && !nativeAds.overlay && document.visibilityState === 'visible';
+  if (want === nativeAds.shown) return;
+  nativeAds.shown = want;
+  document.body.classList.toggle('has-banner', want);
+  if (want) {
+    if (!nativeAds.created) {
+      nativeAds.created = true;
+      AdMob.showBanner({
+        adId: native.ads.ios.banner,
+        adSize: 'ADAPTIVE_BANNER',
+        position: 'BOTTOM_CENTER',
+        margin: 0,
+        isTesting: native.ads.testing,
+      }).catch(() => {
+        nativeAds.created = false;
+        nativeAds.shown = false;
+        document.body.classList.remove('has-banner');
+      });
+    } else {
+      AdMob.resumeBanner().catch(() => {});
+    }
+  } else {
+    AdMob.hideBanner().catch(() => {});
+  }
+}
+
+/** 지금 화면의 광고 자리(앱에서는 보이지 않는 표시용 칸)가 화면 안에 들어오는지 지켜본다. */
+function watchNativeSlots(screenId) {
+  nativeAds.observer?.disconnect();
+  nativeAds.visible.clear();
+  const root = document.getElementById(screenId);
+  const slots = root ? [...root.querySelectorAll('.ad-slot:not(.ad-desktop)')] : [];
+  nativeAds.observer = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) nativeAds.visible.add(e.target);
+      else nativeAds.visible.delete(e.target);
+    }
+    updateBanner();
+  });
+  for (const slot of slots) {
+    slot.hidden = false;
+    slot.classList.add('native');
+    nativeAds.observer.observe(slot);
+  }
+  updateBanner();
+}
+
+/** 팝업(결과·로그인 등)이 열려 있으면 배너를 숨긴다. */
+function watchOverlays() {
+  const check = () => {
+    nativeAds.overlay = !!document.querySelector('.overlay:not([hidden])');
+    updateBanner();
+  };
+  new MutationObserver(check).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  document.addEventListener('visibilitychange', updateBanner);
+}
+
+/** iOS 추적 동의: 바로 묻지 않고 안내를 먼저 보여 준 뒤 시스템 창을 띄운다. 거부해도 게임은 그대로. */
+async function askTracking() {
+  if (native.platform !== 'ios') return;
+  let status = 'notDetermined';
+  try {
+    ({ status } = await native.AdMob.trackingAuthorizationStatus());
+  } catch {
+    return;
+  }
+  if (status !== 'notDetermined') return;
+  try {
+    if (localStorage.getItem(ATT_ASKED_KEY)) return;
+  } catch {
+    // 무시
+  }
+  const box = document.getElementById('att');
+  if (box) {
+    box.hidden = false;
+    await new Promise((resolve) => document.getElementById('att-ok').addEventListener('click', resolve, { once: true }));
+    box.hidden = true;
+  }
+  try {
+    localStorage.setItem(ATT_ASKED_KEY, '1');
+  } catch {
+    // 무시
+  }
+  await native.AdMob.requestTrackingAuthorization().catch(() => {});
+}
+
+/** 앱 시작 때 한 번: 개인정보 동의(필요한 지역만) → 추적 동의 → AdMob 시작. */
+export async function startNativeAds() {
+  if (!native?.AdMob) return;
+  const { AdMob } = native;
+  try {
+    const info = await AdMob.requestConsentInfo();
+    if (info.isConsentFormAvailable && info.status === 'REQUIRED') await AdMob.showConsentForm();
+  } catch {
+    // 동의 정보를 못 받아도 광고는 비맞춤으로 나갈 수 있다
+  }
+  await askTracking();
+  try {
+    await AdMob.initialize({ initializeForTesting: native.ads.testing });
+  } catch {
+    return;
+  }
+  AdMob.addListener('bannerAdSizeChanged', (size) => setBannerSpace(size?.height ?? 0));
+  watchOverlays();
+  nativeAds.ready = true;
+  updateBanner();
 }

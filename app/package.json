@@ -1,0 +1,27 @@
+{
+  "name": "yahchoo-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "오늘도 야추 앱 (Capacitor). web/을 앱 안에 묶는다.",
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "build": "node scripts/build-web.mjs && npx cap sync ios",
+    "sync": "npx cap sync ios",
+    "postinstall": "node scripts/patch-plugins.mjs"
+  },
+  "dependencies": {
+    "@capacitor-community/admob": "^8.3.0",
+    "@capacitor-community/apple-sign-in": "^7.1.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/share": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "esbuild": "^0.28.2"
+  }
+}

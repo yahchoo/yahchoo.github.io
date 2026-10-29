@@ -21,7 +21,8 @@ import {
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
 import { JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
-import { fillAds } from './ads.js';
+import { fillAds, startNativeAds } from './ads.js';
+import { haptic, inApp, share } from './native.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -48,7 +49,7 @@ function closeOverlay(id) {
 
 for (const overlay of document.querySelectorAll('.overlay')) {
   overlay.addEventListener('click', (ev) => {
-    if (ev.target === overlay && overlay.id !== 'result') closeOverlay(overlay.id);
+    if (ev.target === overlay && overlay.id !== 'result' && overlay.id !== 'att') closeOverlay(overlay.id);
     if (ev.target.closest('[data-close]')) closeOverlay(overlay.id);
   });
 }
@@ -644,7 +645,7 @@ function showJeer(msg) {
   if (!t || !j) return;
   // 누가 던졌는지는 알 수 없다 (서버도 보내지 않는다).
   toast(`관전석에서 ${t.mine && room.view?.mode !== '2v2' ? '나' : t.name}에게 ${j.verb}`);
-  if (t.mine) navigator.vibrate?.(msg.action === 'hammer' ? [30, 40, 60] : 80);
+  if (t.mine) haptic(msg.action === 'hammer' ? 'heavy' : 'medium', msg.action === 'hammer' ? [30, 40, 60] : 80);
 
   const box = el('div', `jeer-fx jeer-${msg.action} ${t.cls}`);
   box.setAttribute('aria-hidden', 'true');
@@ -738,7 +739,7 @@ function celebrateYacht(who) {
     }
     document.body.append(box);
     setTimeout(() => box.remove(), 2800);
-    if (who?.me) navigator.vibrate?.([40, 60, 90]);
+    if (who?.me) haptic('heavy', [40, 60, 90]);
   }
 
   yachtTimer = setTimeout(() => {
@@ -1334,7 +1335,8 @@ $('sit-down').addEventListener('click', () => {
 });
 /* 친구 초대: 휴대폰·PC의 기본 공유 창(카카오톡, 메시지, SNS 등)을 먼저 쓰고, 없으면 자체 공유 창을 띄운다. */
 function inviteLink() {
-  const url = new URL(location.href);
+  // 앱 안 주소(capacitor://…)가 아니라 웹 주소로 초대한다. 받은 사람은 웹이나 앱 어디서든 들어올 수 있다.
+  const url = new URL(inApp ? 'https://yahchoo.ohsangplay.com/' : location.href);
   url.search = '';
   url.hash = '';
   url.searchParams.set('room', room.code);
@@ -1346,15 +1348,9 @@ $('copy-invite').addEventListener('click', async () => {
   const mode = MODE_LABEL[room.view?.mode] ?? '';
   const text = `오늘도 야추 ${mode} 한 판 같이 해요! 방 코드 ${room.code}`;
   const data = { title: '오늘도 야추', text, url: link };
-  if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
-    try {
-      await navigator.share(data);
-      return;
-    } catch (err) {
-      if (err?.name === 'AbortError') return; // 공유 창을 닫음
-      // 그 외 실패(앱 안 브라우저 제한 등)는 링크 복사로
-    }
-  }
+  const shared = await share(data);
+  if (shared === true || shared === 'cancel') return; // 공유했거나 공유 창을 닫음
+  // 공유 창이 없거나 실패(앱 안 브라우저 제한 등)하면 링크 복사로
   copyInvite(`${text}\n${link}`);
 });
 
@@ -2166,6 +2162,8 @@ function boot() {
   } else {
     showHome();
   }
+  // 앱: 동의 확인 후 AdMob 배너 시작
+  if (inApp) startNativeAds();
 }
 
 boot();

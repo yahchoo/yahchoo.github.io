@@ -1,0 +1,194 @@
+name: iOS 빌드 → TestFlight 업로드
+
+# Mac 없이 GitHub의 macOS 실행 환경에서 "오늘도 야추" iOS 앱(Capacitor, app/)을 빌드하고 App Store Connect에 올린다.
+# Actions 탭 → "iOS 빌드 → TestFlight 업로드" → Run workflow 로 수동 실행.
+#
+# 필요한 저장소 Secrets (Settings → Secrets and variables → Actions)
+#   APPLE_TEAM_ID         Apple Developer 팀 ID (10자리)
+#   ASC_KEY_ID            App Store Connect API 키 ID
+#   ASC_ISSUER_ID         App Store Connect API 발급자(Issuer) ID
+#   ASC_KEY_P8_BASE64     AuthKey_XXXX.p8 파일의 base64 (또는 p8 내용 그대로)
+# API 키는 "관리자(Admin)" 역할이어야 클라우드 서명(인증서·프로파일 자동 관리)이 된다.
+#
+# 선택 Variables: ADMOB_IOS_APP_ID, ADMOB_IOS_BANNER_ID (없으면 구글 테스트 광고)
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "App Store Connect에 업로드 (끄면 빌드만 하고 ipa를 아티팩트로 저장)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ADMOB_IOS_APP_ID: ${{ vars.ADMOB_IOS_APP_ID }}
+      ADMOB_IOS_BANNER_ID: ${{ vars.ADMOB_IOS_BANNER_ID }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Secrets 확인
+        run: |
+          missing=""
+          for v in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID; do [ -n "${!v}" ] || missing="$missing $v"; done
+          [ -n "${{ secrets.ASC_KEY_P8_BASE64 }}" ] || missing="$missing ASC_KEY_P8_BASE64"
+          if [ -n "$missing" ]; then echo "::error title=Secrets 없음::저장소 Secrets가 없습니다:$missing"; exit 1; fi
+          echo "::notice title=Xcode::$(xcodebuild -version | tr '\n' ' ')"
+
+      - name: API 키 설치
+        env:
+          KEY_RAW: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          mkdir -p "$HOME/private_keys"
+          KEY_FILE="$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          # .p8 내용을 그대로 넣었어도, base64로 넣었어도 동작하게 한다 (줄바꿈·공백·CR 정리)
+          if printf '%s' "$KEY_RAW" | grep -q "BEGIN PRIVATE KEY"; then
+            printf '%s\n' "$KEY_RAW" | tr -d '\r' > "$KEY_FILE"
+          else
+            printf '%s' "$KEY_RAW" | tr -d ' \r\n\t' | base64 --decode > "$KEY_FILE" 2>/dev/null || true
+          fi
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE" || ! openssl pkey -in "$KEY_FILE" -noout 2>/dev/null; then
+            echo "::error title=API 키 형식 오류::ASC_KEY_P8_BASE64 값으로 올바른 .p8 키를 만들 수 없어요. (현재 길이 ${#KEY_RAW}자)"
+            exit 1
+          fi
+          case "$ASC_KEY_ID" in *[!A-Z0-9]*|"") echo "::error title=API 키 ID 형식 오류::ASC_KEY_ID는 영문 대문자·숫자여야 해요. 현재 길이 ${#ASC_KEY_ID}자"; exit 1;; esac
+          echo "$ASC_ISSUER_ID" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || { echo "::error title=발급자 ID 형식 오류::ASC_ISSUER_ID 형식이 이상해요. 현재 길이 ${#ASC_ISSUER_ID}자"; exit 1; }
+          case "$APPLE_TEAM_ID" in *[!A-Z0-9]*|"") echo "::error title=팀 ID 형식 오류::APPLE_TEAM_ID는 영문 대문자·숫자 10자리여야 해요. 현재 길이 ${#APPLE_TEAM_ID}자"; exit 1;; esac
+          echo "API 키 확인 완료"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: 웹 묶기 + iOS 프로젝트 동기화
+        run: |
+          npm ci
+          npm run build:web
+          npx cap sync ios
+          # AdMob 앱 ID (Variables가 있으면 실제 ID, 없으면 테스트 ID)
+          APP_ID=$(node -p "require('./www-ads.json').iosAppId")
+          /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $APP_ID" ios/App/App/Info.plist
+          echo "::notice title=광고::AdMob 앱 ID $APP_ID ($(node -p "require('./www-ads.json').testing ? '테스트 광고' : '실제 광고'"))"
+
+      - name: Swift 패키지 받기
+        run: |
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App 2>&1 | tee resolve.log || {
+            msg=$(grep -iE "error|fail|conflict|could not" resolve.log | tail -n 30 | sed 's/%/%25/g' | awk '{printf "%s%%0A",$0}')
+            echo "::error title=Swift 패키지::$msg"
+            exit 1
+          }
+
+      - name: Archive (자동 서명)
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "${ASC_KEY_ID}" \
+            -authenticationKeyIssuerID "${ASC_ISSUER_ID}" \
+            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" 2>&1 | tee archive.log | grep -E "^(error|warning: .*sign|\*\*)|error:" || true
+          if [ ! -d build/App.xcarchive ]; then
+            msg=$(grep -E "error:|Error |failed|requires a provisioning|No profiles|certificate" archive.log | sort -u | tail -n 40 | sed 's/%/%25/g' | awk '{printf "%s%%0A",$0}')
+            echo "::error title=Archive 실패::$msg"
+            exit 1
+          fi
+          echo "::notice title=Archive::빌드 번호 ${BUILD_NUMBER}"
+
+      - name: 서명해서 ipa 만들기 (클라우드 서명)
+        run: |
+          cat > build/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "${ASC_KEY_ID}" \
+            -authenticationKeyIssuerID "${ASC_ISSUER_ID}" 2>&1 | tee export.log || {
+              msg=$(grep -iE "error|fail|signing|certificate|profile|provision|account|permission|team" export.log | tail -n 40 | sed 's/%/%25/g' | awk '{printf "%s%%0A",$0}')
+              echo "::error title=exportArchive::$msg"
+              LOGDIR=$(grep -oE "/var/folders/[^ ]*\.xcdistributionlogs" export.log | head -1)
+              if [ -n "$LOGDIR" ] && [ -f "$LOGDIR/IDEDistribution.standard.log" ]; then
+                msg2=$(grep -iE "error|fail|denied|permission|certificate" "$LOGDIR/IDEDistribution.standard.log" | tail -n 30 | sed 's/%/%25/g' | awk '{printf "%s%%0A",$0}')
+                echo "::error title=distribution log::$msg2"
+              fi
+              exit 1
+            }
+          ls -la build/ipa
+
+      - name: 앱 확인 (Apple 로그인 권한, 버전)
+        run: |
+          IPA=$(ls build/ipa/*.ipa | head -1)
+          rm -rf build/check && mkdir -p build/check && unzip -q "$IPA" -d build/check
+          APP=$(ls -d build/check/Payload/*.app | head -1)
+          ENT=$(codesign -d --entitlements :- "$APP" 2>/dev/null | tr -d '\n\t ')
+          VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist")
+          BID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")
+          if printf '%s' "$ENT" | grep -q "com.apple.developer.applesignin"; then
+            echo "::notice title=앱 확인::$BID $VER ($BUILD), Apple 로그인 권한 있음"
+          else
+            echo "::warning title=앱 확인::$BID $VER ($BUILD), Apple 로그인 권한(com.apple.developer.applesignin)이 서명에 없어요"
+          fi
+
+      - name: ipa 보관 (Actions 실행 화면에서 내려받기)
+        uses: actions/upload-artifact@v5
+        with:
+          name: yahchoo-ios-${{ github.run_number }}
+          path: app/build/ipa/*.ipa
+          retention-days: 14
+
+      - name: App Store Connect 업로드
+        if: ${{ inputs.upload }}
+        run: |
+          IPA=$(ls build/ipa/*.ipa | head -1)
+          set -o pipefail
+          xcrun altool --upload-app --type ios -f "$IPA" \
+            --apiKey "${ASC_KEY_ID}" --apiIssuer "${ASC_ISSUER_ID}" 2>&1 | tee upload.log || {
+              msg=$(grep -iE "error|fail|invalid|missing|already" upload.log | tail -n 30 | sed 's/%/%25/g' | awk '{printf "%s%%0A",$0}')
+              echo "::error title=업로드 실패::$msg"
+              exit 1
+            }
+          echo "::notice title=업로드 완료::빌드 ${BUILD_NUMBER}. App Store Connect → TestFlight에서 처리(10~30분) 후 확인하세요."
+
+      - name: API 키 삭제
+        if: always()
+        run: rm -rf ~/private_keys
