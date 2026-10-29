@@ -4,6 +4,7 @@
 
 - 웹: https://yahchoo.ohsangplay.com (GitHub Pages 커스텀 도메인, `web/`. https://yahchoo.github.io 는 새 주소로 넘어감)
 - 같이 하기 서버: Cloudflare Workers + Durable Objects (`worker/`)
+- 앱: Android·iOS (Capacitor로 `web/`을 묶음, `app/`). 빌드·광고·로그인 설정은 [app/README.md](app/README.md)
 
 ## 규칙 (세계의 아소비 대전 51 기준)
 
@@ -90,6 +91,9 @@ web/                 # 정적 웹 (빌드 과정 없음)
   js/net.js          # 같이 하기 서버 연결·재접속
   js/app.js          # 화면
   js/config.js       # 서버 주소 (배포 때 자동으로 채워짐)
+  js/native.js       # 앱 연결: 공유·진동·뒤로가기·외부 링크 (웹에서는 아무것도 안 함)
+  js/admob.js        # 앱 광고 배너 (앱에서만 불러옴)
+app/                 # Android·iOS 앱 (Capacitor, app/README.md)
 worker/              # Cloudflare Worker
   src/match.ts       # 방 규칙 (순수 로직, 단위 테스트)
   src/solo.ts        # 혼자 하기(서버 굴림)·이니셜·주간 기준 (순수 로직)
@@ -111,6 +115,7 @@ worker/              # Cloudflare Worker
    - `CLOUDFLARE_ACCOUNT_ID`: 3번 ID
 5. `main`에 푸시하거나 **Actions → CI & Deploy → Run workflow**
 6. (구글 로그인) Google Cloud 프로젝트 `yahchoo`의 OAuth 클라이언트 ID(웹 애플리케이션, 승인된 JavaScript 원본 `https://yahchoo.ohsangplay.com`, `https://yahchoo.github.io`)가 `.github/workflows/ci.yml`에 기본값으로 들어가 있음. 다른 ID를 쓰려면 저장소 **변수** `GOOGLE_CLIENT_ID`를 넣으면 그 값을 우선 사용
+   - 앱 로그인: 서버는 토큰의 aud가 웹 ID이거나 저장소 **변수** `GOOGLE_APP_CLIENT_IDS`(쉼표로 구분, 예: iOS 클라이언트 ID)에 있으면 받아 줌 (`GOOGLE_CLIENT_IDS`로 배포). 자세한 건 [app/README.md](app/README.md)
 
 배포할 때 D1 데이터베이스(`yacht-dice`)를 찾거나 만들고 테이블을 준비하는 것까지 자동으로 합니다. Worker 이름은 `yacht-dice-api`라서 다른 프로젝트와 같은 Cloudflare 계정을 써도 겹치지 않습니다. 시크릿이 없으면 서버 배포는 건너뛰고 웹은 혼자 하기만 되는 상태로 배포됩니다. 서버 주소를 직접 정하려면 저장소 변수 `API_BASE_URL`을 넣으세요.
 
