@@ -47,8 +47,30 @@ function closeOverlay(id) {
   $(id).hidden = true;
 }
 
+/* 결과창은 바깥을 눌러도 닫지 않는다. 대신 버튼(한 판 더, 점수판 보기 등)을 반짝여서 어디를 누르면 되는지 알려 준다. */
+let nudgeTimer = null;
+function nudgeResult() {
+  const actions = $('result-actions');
+  const hint = $('result-hint');
+  actions.classList.remove('nudge');
+  void actions.offsetWidth; // 애니메이션 다시 시작
+  actions.classList.add('nudge');
+  hint.textContent = '아래 버튼을 눌러 주세요';
+  hint.classList.add('show');
+  haptic('light', 20);
+  clearTimeout(nudgeTimer);
+  nudgeTimer = setTimeout(() => {
+    actions.classList.remove('nudge');
+    hint.classList.remove('show');
+  }, 1600);
+}
+
 for (const overlay of document.querySelectorAll('.overlay')) {
   overlay.addEventListener('click', (ev) => {
+    if (overlay.id === 'result' && !ev.target.closest('.result-actions, button, a, input')) {
+      nudgeResult();
+      return;
+    }
     if (ev.target === overlay && overlay.id !== 'result' && overlay.id !== 'att') closeOverlay(overlay.id);
     if (ev.target.closest('[data-close]')) closeOverlay(overlay.id);
   });

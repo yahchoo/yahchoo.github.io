@@ -863,3 +863,32 @@ body.has-banner .closet-bar,
 body.has-banner .conn-banner { bottom: calc(var(--app-banner, 60px) + env(safe-area-inset-bottom)); }
 .att-card p { margin: 0 0 12px; line-height: 1.6; }
 .att-card h2 { margin-bottom: 12px; }
+
+/* 두 번 탭해서 확대되지 않게 (두 손가락 확대는 웹에서 그대로) */
+html { touch-action: manipulation; }
+
+/* 결과창 바깥을 눌렀을 때: 버튼을 반짝이며 흔들어 어디를 누르면 되는지 알려 준다 */
+.result-hint {
+  margin: 14px 0 -6px; min-height: 0; height: 0; overflow: hidden;
+  text-align: center; font-size: 14px; font-weight: 700; color: var(--signal-red);
+  opacity: 0; transition: opacity .2s, height .2s;
+}
+.result-hint.show { height: 1.4em; opacity: 1; }
+.result-actions.nudge { animation: nudge-shake .5s ease; }
+.result-actions.nudge .btn { animation: nudge-glow 1.5s ease; }
+@keyframes nudge-shake {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+@keyframes nudge-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 197, 24, 0); }
+  20%, 60% { box-shadow: 0 0 0 4px var(--signal-yellow); }
+  40%, 80% { box-shadow: 0 0 0 7px rgba(245, 197, 24, .45); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .result-actions.nudge, .result-actions.nudge .btn { animation: none; }
+  .result-actions.nudge .btn { box-shadow: 0 0 0 4px var(--signal-yellow); }
+}

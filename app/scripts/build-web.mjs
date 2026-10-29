@@ -43,7 +43,10 @@ await build({
 });
 
 const indexFile = path.join(www, 'index.html');
-const html = fs.readFileSync(indexFile, 'utf8');
+// 앱에서는 확대를 끈다 (두 번 탭·두 손가락 모두). 웹 사이트는 접근성 때문에 두 손가락 확대를 남겨 둔다.
+const html = fs
+  .readFileSync(indexFile, 'utf8')
+  .replace('content="width=device-width, initial-scale=1, viewport-fit=cover"', 'content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"');
 if (!html.includes('js/cap.js')) {
   fs.writeFileSync(indexFile, html.replace('<script type="module" src="js/app.js"></script>', '<script src="js/cap.js"></script>\n  <script type="module" src="js/app.js"></script>'));
 }
