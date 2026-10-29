@@ -22,6 +22,7 @@ import {
 import { GOOGLE_CLIENT_ID } from './config.js';
 import { JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
 import { fillAds } from './ads.js';
+import { IS_APP, SITE_URL, exitApp, nativeShare, onBackButton, vibrate } from './native.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -34,6 +35,7 @@ function show(screen) {
   for (const id of ['home', 'online', 'lobby', 'game', 'ranking', 'closet']) $(id).hidden = id !== screen;
   $('flash').hidden = true;
   window.scrollTo(0, 0);
+  document.body.scrollTop = 0; // 앱: body가 스크롤 영역 (style.css의 .app)
   requestAnimationFrame(() => fillAds(screen));
 }
 
@@ -644,7 +646,7 @@ function showJeer(msg) {
   if (!t || !j) return;
   // 누가 던졌는지는 알 수 없다 (서버도 보내지 않는다).
   toast(`관전석에서 ${t.mine && room.view?.mode !== '2v2' ? '나' : t.name}에게 ${j.verb}`);
-  if (t.mine) navigator.vibrate?.(msg.action === 'hammer' ? [30, 40, 60] : 80);
+  if (t.mine) vibrate(msg.action === 'hammer' ? [30, 40, 60] : 80);
 
   const box = el('div', `jeer-fx jeer-${msg.action} ${t.cls}`);
   box.setAttribute('aria-hidden', 'true');
@@ -738,7 +740,7 @@ function celebrateYacht(who) {
     }
     document.body.append(box);
     setTimeout(() => box.remove(), 2800);
-    if (who?.me) navigator.vibrate?.([40, 60, 90]);
+    if (who?.me) vibrate([40, 60, 90]);
   }
 
   yachtTimer = setTimeout(() => {
@@ -1334,7 +1336,8 @@ $('sit-down').addEventListener('click', () => {
 });
 /* 친구 초대: 휴대폰·PC의 기본 공유 창(카카오톡, 메시지, SNS 등)을 먼저 쓰고, 없으면 자체 공유 창을 띄운다. */
 function inviteLink() {
-  const url = new URL(location.href);
+  // 앱 안 주소(https://localhost)는 친구가 열 수 없으니 웹 사이트 주소로
+  const url = new URL(IS_APP ? SITE_URL : location.href);
   url.search = '';
   url.hash = '';
   url.searchParams.set('room', room.code);
@@ -1346,6 +1349,7 @@ $('copy-invite').addEventListener('click', async () => {
   const mode = MODE_LABEL[room.view?.mode] ?? '';
   const text = `오늘도 야추 ${mode} 한 판 같이 해요! 방 코드 ${room.code}`;
   const data = { title: '오늘도 야추', text, url: link };
+  if (await nativeShare(data)) return; // 앱: 기본 공유 창
   if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
     try {
       await navigator.share(data);
@@ -2117,6 +2121,23 @@ onAccountChange(() => {
     if (currentUser()) renderCloset();
     else showHome();
   }
+});
+
+/* ---------------------------------------------------------------- 앱: 안드로이드 뒤로가기 */
+// 열린 팝업이 있으면 닫고, 없으면 화면마다 이전 화면으로. 처음 화면에서는 앱을 끝낼지 묻는다.
+
+onBackButton(() => {
+  const open = [...document.querySelectorAll('.overlay')].filter((o) => !o.hidden).pop();
+  if (open) {
+    if (!open.id) return; // 광고 안내 등 직접 답해야 하는 창
+    closeOverlay(open.id);
+    if (open.id === 'result') $('game-exit').click(); // 게임 결과 → 게임에서 나가기
+    return;
+  }
+  if (!$('game').hidden) $('game-exit').click();
+  else if (!$('lobby').hidden) leaveRoom();
+  else if (!$('home').hidden) confirmExit('오늘도 야추를 끝낼까요?', exitApp, '끝내기');
+  else showHome();
 });
 
 /* ---------------------------------------------------------------- 시작 */
