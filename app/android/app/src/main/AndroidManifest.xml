@@ -23,6 +23,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- 초대 링크(https://yahchoo.ohsangplay.com/?room=코드)를 앱으로 연다. 앱이 없으면 그대로 웹 -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="yahchoo.ohsangplay.com" android:path="/" />
+            </intent-filter>
+
         </activity>
 
         <!-- AdMob 앱 ID: app/build.gradle이 ADMOB_ANDROID_APP_ID(없으면 구글 테스트 ID)로 채운다 -->

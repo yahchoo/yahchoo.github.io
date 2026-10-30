@@ -187,6 +187,11 @@ jobs:
           else
             echo "::warning title=앱 확인::$BID $VER ($BUILD), Apple 로그인 권한(com.apple.developer.applesignin)이 서명에 없어요"
           fi
+          if printf '%s' "$ENT" | grep -q "applinks:yahchoo.ohsangplay.com"; then
+            echo "::notice title=링크로 앱 열기::Associated Domains 권한 있음 (applinks:yahchoo.ohsangplay.com)"
+          else
+            echo "::warning title=링크로 앱 열기::Associated Domains 권한이 서명에 없어요"
+          fi
 
       - name: ipa 보관 (Actions 실행 화면에서 내려받기)
         uses: actions/upload-artifact@v5

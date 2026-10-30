@@ -2253,6 +2253,28 @@ function boot() {
   }
   // 앱: 동의 확인 후 AdMob 배너 시작
   if (inApp) startNativeAds();
+  // 앱: 초대 링크(https://yahchoo.ohsangplay.com/?room=코드)로 열렸을 때
+  if (native) {
+    native.App.getLaunchUrl?.().then((r) => r?.url && openInviteLink(r.url)).catch(() => {});
+    native.App.addListener('appUrlOpen', (ev) => openInviteLink(ev.url));
+  }
+}
+
+/** 앱에서 초대 링크를 받으면 그 방 입장 화면으로. 이미 다른 방에 있으면 안내만. */
+function openInviteLink(link) {
+  let code = '';
+  try {
+    code = (new URL(link).searchParams.get('room') ?? '').toUpperCase();
+  } catch {
+    return;
+  }
+  if (!/^[A-Z0-9]{4}$/.test(code) || code === activeRoom()) return;
+  if (!$('lobby').hidden || !$('game').hidden) {
+    toast('지금 방에서 나온 뒤 초대 링크를 다시 눌러 주세요');
+    return;
+  }
+  for (const id of ['rules', 'confirm', 'watchers']) closeOverlay(id);
+  showOnline(code);
 }
 
 boot();

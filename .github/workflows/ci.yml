@@ -187,9 +187,27 @@ jobs:
           # 애드센스: 저장소 변수 ADSENSE_CLIENT(ca-pub-…), ADSENSE_SLOTS(JSON). 없으면 광고 없이 배포한다.
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT || '' }}
           ADSENSE_SLOTS: ${{ vars.ADSENSE_SLOTS || '{}' }}
+          # 링크로 앱 열기: iOS는 팀 ID, 안드로이드는 서명 인증서 SHA-256(쉼표로 여러 개: 업로드 키, Play 앱 서명 키)
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           mkdir -p _site
           cp -r web/. _site/
+          mkdir -p _site/.well-known
+          if printf '%s' "$APPLE_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$'; then
+            jq -n --arg id "$APPLE_TEAM_ID.com.ohsang.play.yahchoo" \
+              '{applinks: {details: [{appIDs: [$id], components: [{"/": "/", "?": {room: "?*"}}]}]}}' > _site/.well-known/apple-app-site-association
+            echo "iOS 링크 열기: apple-app-site-association 만듦"
+          else
+            echo "::warning::APPLE_TEAM_ID가 없어 iOS 링크로 앱 열기 파일을 만들지 않았어요"
+          fi
+          FPS=$(printf '%s' "$ANDROID_CERT_SHA256" | tr ',' '\n' | tr -d ' ' | tr 'a-f' 'A-F' | grep -E '^([0-9A-F]{2}:){31}[0-9A-F]{2}$' || true)
+          if [ -n "$FPS" ]; then
+            printf '%s\n' "$FPS" | jq -R . | jq -s '[{relation: ["delegate_permission/common.handle_all_urls"], target: {namespace: "android_app", package_name: "com.ohsang.play.yahchoo", sha256_cert_fingerprints: .}}]' > _site/.well-known/assetlinks.json
+            echo "안드로이드 링크 열기: assetlinks.json 만듦 ($(printf '%s\n' "$FPS" | wc -l)개 인증서)"
+          else
+            echo "::notice::ANDROID_CERT_SHA256 변수가 없어 안드로이드 링크로 앱 열기 파일은 아직 안 만들었어요"
+          fi
           if [ -z "$API_BASE_URL" ]; then
             echo "::notice::서버 주소가 없어 같이 하기·랭킹·로그인 없이 배포합니다."
             GOOGLE_CLIENT_ID=""
