@@ -82,6 +82,9 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
+      - name: 지난 빌드의 개발 인증서 정리
+        run: node scripts/asc-cleanup-certs.mjs || echo "::warning title=인증서 정리::정리하지 못했어요"
+
       - name: 웹 묶기 + iOS 프로젝트 동기화
         run: |
           npm ci
