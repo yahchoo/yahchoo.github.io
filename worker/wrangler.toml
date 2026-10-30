@@ -32,3 +32,5 @@ ALLOWED_ORIGINS = "https://yahchoo.ohsangplay.com,https://yahchoo.github.io,http
 APPLE_CLIENT_IDS = "com.ohsang.play.yahchoo"
 # 구글 로그인 OAuth 클라이언트 ID. 배포 때 GitHub Actions가 저장소 변수 GOOGLE_CLIENT_ID 값으로 채운다.
 GOOGLE_CLIENT_ID = ""
+# 앱(iOS 등)용 구글 클라이언트 ID (쉼표로 구분). 배포 때 GitHub Actions가 저장소 변수 GOOGLE_IOS_CLIENT_ID 값으로 채운다.
+GOOGLE_APP_CLIENT_IDS = ""

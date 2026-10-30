@@ -7,12 +7,16 @@ import { Share } from '@capacitor/share';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
+import { SocialLogin } from '@capgo/capacitor-social-login';
 
-/* global __ADS__ */
+/* global __ADS__, __AUTH__ */
 window.YachooNative = {
   isNative: Capacitor.isNativePlatform(),
   platform: Capacitor.getPlatform(),
   ads: __ADS__,
+  /** 앱용 구글 로그인 설정 { googleIos, googleWeb } (googleIos가 없으면 앱 구글 로그인 숨김) */
+  auth: __AUTH__,
+  SocialLogin,
   SignInWithApple,
   AdMob,
   Share,

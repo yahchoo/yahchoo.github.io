@@ -98,6 +98,7 @@ jobs:
         if: steps.cf.outputs.ready == 'true'
         env:
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || '994205737094-50gr21rv5gd4jmrk3drgq3462k6k2rj7.apps.googleusercontent.com' }}
+          GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
         run: |
           if [ -z "$GOOGLE_CLIENT_ID" ]; then
             echo "::notice::저장소 변수 GOOGLE_CLIENT_ID가 없어 로그인 없이 배포합니다."
@@ -107,6 +108,15 @@ jobs:
           else
             sed -i "s/^GOOGLE_CLIENT_ID = \"\"/GOOGLE_CLIENT_ID = \"$GOOGLE_CLIENT_ID\"/" wrangler.toml
             grep '^GOOGLE_CLIENT_ID' wrangler.toml
+          fi
+          # 앱(iOS)용 구글 클라이언트 ID: 앱의 네이티브 구글 로그인 토큰도 받는다
+          if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
+            if printf '%s' "$GOOGLE_IOS_CLIENT_ID" | grep -Eq '^[0-9A-Za-z._-]+\.apps\.googleusercontent\.com$'; then
+              sed -i "s/^GOOGLE_APP_CLIENT_IDS = \"\"/GOOGLE_APP_CLIENT_IDS = \"$GOOGLE_IOS_CLIENT_ID\"/" wrangler.toml
+              grep '^GOOGLE_APP_CLIENT_IDS' wrangler.toml
+            else
+              echo "::warning::GOOGLE_IOS_CLIENT_ID 형식이 이상해서 앱 구글 로그인을 켜지 않았어요."
+            fi
           fi
 
       - name: Deploy worker

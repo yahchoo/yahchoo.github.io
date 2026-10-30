@@ -67,13 +67,14 @@ export async function verifyRs256Jwt(token: unknown, getKeys: JwksFetcher): Prom
 /** 구글 ID 토큰을 검증하고 내용(sub 등)을 돌려준다. */
 export async function verifyGoogleIdToken(
   token: unknown,
-  clientId: string,
+  clientId: string | string[],
   now: number,
   getKeys: JwksFetcher = fetchGoogleJwks,
 ): Promise<GoogleClaims> {
   const claims = (await verifyRs256Jwt(token, getKeys)) as unknown as GoogleClaims;
   if (!GOOGLE_ISSUERS.includes(claims.iss)) throw new AuthError('구글 로그인이 아니에요');
-  if (claims.aud !== clientId) throw new AuthError('이 사이트의 로그인이 아니에요');
+  const allowed = (Array.isArray(clientId) ? clientId : [clientId]).filter(Boolean);
+  if (!allowed.includes(claims.aud)) throw new AuthError('이 사이트의 로그인이 아니에요');
   if (typeof claims.exp !== 'number' || claims.exp * 1000 < now - 60_000) throw new AuthError('로그인이 만료됐어요. 다시 로그인해 주세요');
   if (typeof claims.sub !== 'string' || !claims.sub) throw new AuthError('로그인 정보가 올바르지 않아요');
   return claims;

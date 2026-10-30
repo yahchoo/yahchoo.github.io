@@ -11,6 +11,7 @@ name: iOS 빌드 → TestFlight 업로드
 # API 키는 "관리자(Admin)" 역할이어야 클라우드 서명(인증서·프로파일 자동 관리)이 된다.
 #
 # 선택 Variables: ADMOB_IOS_APP_ID, ADMOB_IOS_BANNER_ID, ADMOB_IOS_REWARDED_ID (없으면 구글 테스트 광고)
+#                 GOOGLE_IOS_CLIENT_ID (구글 클라우드의 iOS용 OAuth 클라이언트 ID, 없으면 앱 구글 로그인 숨김)
 
 on:
   workflow_dispatch:
@@ -41,6 +42,7 @@ jobs:
       ADMOB_IOS_APP_ID: ${{ vars.ADMOB_IOS_APP_ID }}
       ADMOB_IOS_BANNER_ID: ${{ vars.ADMOB_IOS_BANNER_ID }}
       ADMOB_IOS_REWARDED_ID: ${{ vars.ADMOB_IOS_REWARDED_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v5
@@ -89,6 +91,22 @@ jobs:
           APP_ID=$(node -p "require('./www-ads.json').iosAppId")
           /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $APP_ID" ios/App/App/Info.plist
           echo "::notice title=광고::AdMob 앱 ID $APP_ID ($(node -p "require('./www-ads.json').testing ? '테스트 광고' : '실제 광고'"))"
+          # 구글 로그인(iOS): 클라이언트 ID를 거꾸로 쓴 주소 체계(URL scheme)를 등록해야 구글 로그인 창이 앱으로 돌아온다
+          GID=$(node -p "require('./www-ads.json').googleIos || ''")
+          if [ -n "$GID" ]; then
+            REV="com.googleusercontent.apps.${GID%.apps.googleusercontent.com}"
+            PL=ios/App/App/Info.plist
+            /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PL"
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PL"
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PL"
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $REV" "$PL"
+            /usr/libexec/PlistBuddy -c "Delete :GIDClientID" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :GIDClientID string $GID" "$PL"
+            echo "::notice title=구글 로그인::앱 구글 로그인 켜짐 ($REV)"
+          else
+            echo "::notice title=구글 로그인::저장소 변수 GOOGLE_IOS_CLIENT_ID가 없어 앱에서는 Apple 로그인만 보여요"
+          fi
 
       - name: Swift 패키지 받기
         run: |

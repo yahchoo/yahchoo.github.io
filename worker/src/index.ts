@@ -28,6 +28,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   /** 구글 로그인 OAuth 클라이언트 ID. 없으면 로그인을 쓸 수 없다. */
   GOOGLE_CLIENT_ID?: string;
+  /** 앱(iOS 등)용 구글 클라이언트 ID (쉼표로 구분). 앱의 네이티브 구글 로그인 토큰도 받는다. */
+  GOOGLE_APP_CLIENT_IDS?: string;
   /** 로컬 개발용 로그인(.dev.vars). 배포에서는 쓰지 않는다. */
   DEV_LOGIN?: string;
   /** Apple로 로그인: 허용하는 앱 번들 ID (쉼표로 구분) */

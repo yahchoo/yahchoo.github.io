@@ -85,7 +85,47 @@ export async function api(path, body) {
 
 /** 로그인 기능을 쓸 수 있는지. (구글 클라이언트 ID가 있거나, 로컬 개발) */
 export function loginAvailable() {
-  return !!apiBase() && (!!GOOGLE_CLIENT_ID || isLocalDev() || appleLoginAvailable());
+  return !!apiBase() && (!!GOOGLE_CLIENT_ID || isLocalDev() || appleLoginAvailable() || googleNativeAvailable());
+}
+
+/* ---------------------------------------------------------------- 구글 로그인 (앱 전용, 네이티브) */
+// 앱 안 화면(WKWebView)에서는 구글이 웹 로그인을 막아서, 앱에서는 구글 로그인 SDK로 받은 ID 토큰을 서버로 보낸다.
+
+function googleNative() {
+  const app = globalThis.YachooNative;
+  if (!app?.isNative || app.platform !== 'ios' || !app.SocialLogin || !app.auth?.googleIos) return null;
+  return app;
+}
+
+export function googleNativeAvailable() {
+  return !!googleNative() && !!apiBase();
+}
+
+let googleReady = null;
+
+/** 앱 구글 로그인. 사용자가 취소하면 null. */
+export async function googleNativeLogin() {
+  const app = googleNative();
+  if (!app) throw new Error('구글 로그인을 쓸 수 없어요');
+  googleReady ??= app.SocialLogin.initialize({
+    google: { iOSClientId: app.auth.googleIos, iOSServerClientId: app.auth.googleWeb, mode: 'online' },
+  }).catch((err) => {
+    googleReady = null;
+    throw err;
+  });
+  await googleReady;
+  let res;
+  try {
+    res = await app.SocialLogin.login({ provider: 'google', options: { scopes: [] } });
+  } catch (err) {
+    if (/cancel/i.test(String(err?.message ?? err?.code ?? ''))) return null;
+    throw new Error('구글 로그인에 실패했어요. 잠시 후 다시 시도해 주세요');
+  }
+  const idToken = res?.result?.idToken;
+  if (!idToken) throw new Error('구글 로그인 정보를 받지 못했어요');
+  const data = await api('/api/auth/google', { credential: idToken });
+  setSession(data.token, data.me);
+  return data.me;
 }
 
 /* ---------------------------------------------------------------- Apple로 로그인 (iOS 앱 전용) */

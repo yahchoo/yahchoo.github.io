@@ -32,6 +32,13 @@ describe('구글 ID 토큰 검증', () => {
     expect(c.sub).toBe('1234567890');
   });
 
+  it('앱용 클라이언트 ID도 목록에 있으면 통과', async () => {
+    const ios = 'ios-client.apps.googleusercontent.com';
+    const c = await verifyGoogleIdToken(await sign({ ...good, aud: ios }), [CLIENT, ios], NOW, keys);
+    expect(c.sub).toBe('1234567890');
+    await expect(verifyGoogleIdToken(await sign({ ...good, aud: ios }), [CLIENT], NOW, keys)).rejects.toThrow(AuthError);
+  });
+
   it('다른 사이트(aud), 만료, 다른 발급자는 거절', async () => {
     await expect(verifyGoogleIdToken(await sign({ ...good, aud: 'other' }), CLIENT, NOW, keys)).rejects.toThrow(AuthError);
     await expect(verifyGoogleIdToken(await sign({ ...good, exp: NOW / 1000 - 3600 }), CLIENT, NOW, keys)).rejects.toThrow('만료');

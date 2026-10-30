@@ -16,7 +16,7 @@ import { bestScore, claimSolo, clearSoloSaves, fetchRankings, hasSoloInProgress,
 import { RoomConnection, activeRoom, apiBase, createRoom } from './net.js';
 import { ITEMS, ITEM_BY_ID, SLOTS, renderAvatar } from './avatar.js';
 import {
-  appleLogin, appleLoginAvailable, authToken, buyItem, currentUser, deleteAccount, devLogin, doublePoints, isLocalDev, loginAvailable, logout, mountGoogleButton,
+  appleLogin, appleLoginAvailable, authToken, googleNativeAvailable, googleNativeLogin, buyItem, currentUser, deleteAccount, devLogin, doublePoints, isLocalDev, loginAvailable, logout, mountGoogleButton,
   onAccountChange, refreshMe, saveProfile, updatePoints,
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
@@ -1903,6 +1903,7 @@ function openLogin({ after = null } = {}) {
   $('login-avatars').replaceChildren(...samples.map((a) => miniAvatar(a, 56)));
   $('dev-login').hidden = !(isLocalDev() && !GOOGLE_CLIENT_ID);
   $('apple-login').hidden = !appleLoginAvailable();
+  $('google-native-login').hidden = !googleNativeAvailable();
   openOverlay('login');
   mountGoogleButton($('google-btn'), {
     onDone: loginDone,
@@ -1918,6 +1919,19 @@ $('apple-login').addEventListener('click', async () => {
   $('login-error').textContent = '';
   try {
     if (await appleLogin()) loginDone();
+  } catch (err) {
+    $('login-error').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('google-native-login').addEventListener('click', async () => {
+  const btn = $('google-native-login');
+  btn.disabled = true;
+  $('login-error').textContent = '';
+  try {
+    if (await googleNativeLogin()) loginDone();
   } catch (err) {
     $('login-error').textContent = err.message;
   } finally {

@@ -146,11 +146,17 @@ async function issueSession(env: Env, sub: string, afterLogin?: (user: UserRow) 
   return json({ token, me: await meView(env, user) });
 }
 
+/** 웹 구글 로그인 ID + 앱(iOS 등)용 구글 클라이언트 ID */
+function googleClientIds(env: Env): string[] {
+  return [env.GOOGLE_CLIENT_ID ?? '', ...(env.GOOGLE_APP_CLIENT_IDS ?? '').split(',')].map((s) => s.trim()).filter(Boolean);
+}
+
 async function loginGoogle(request: Request, env: Env): Promise<Response> {
-  if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, '로그인이 아직 준비되지 않았어요');
+  const clientIds = googleClientIds(env);
+  if (!clientIds.length) throw new HttpError(503, '로그인이 아직 준비되지 않았어요');
   const body = await readJson(request);
   try {
-    const claims = await verifyGoogleIdToken(body.credential, env.GOOGLE_CLIENT_ID, Date.now());
+    const claims = await verifyGoogleIdToken(body.credential, clientIds, Date.now());
     return await issueSession(env, claims.sub);
   } catch (err) {
     if (err instanceof AuthError) throw new HttpError(401, err.message);
