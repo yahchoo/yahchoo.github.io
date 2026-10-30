@@ -31,7 +31,12 @@ const ads = JSON.parse(fs.readFileSync(path.join(root, 'ads.config.json'), 'utf8
 if (process.env.ADMOB_IOS_APP_ID) ads.ios.appId = process.env.ADMOB_IOS_APP_ID;
 if (process.env.ADMOB_IOS_BANNER_ID) ads.ios.banner = process.env.ADMOB_IOS_BANNER_ID;
 if (process.env.ADMOB_IOS_REWARDED_ID) ads.ios.rewarded = process.env.ADMOB_IOS_REWARDED_ID;
-const testing = ads.ios.banner.startsWith('ca-app-pub-3940256099942544/');
+if (process.env.ADMOB_ANDROID_APP_ID) ads.android.appId = process.env.ADMOB_ANDROID_APP_ID;
+if (process.env.ADMOB_ANDROID_BANNER_ID) ads.android.banner = process.env.ADMOB_ANDROID_BANNER_ID;
+if (process.env.ADMOB_ANDROID_REWARDED_ID) ads.android.rewarded = process.env.ADMOB_ANDROID_REWARDED_ID;
+const isTestId = (id) => id.startsWith('ca-app-pub-3940256099942544/');
+const testingBy = { ios: isTestId(ads.ios.banner), android: isTestId(ads.android.banner) };
+const testing = testingBy.ios;
 // 앱 네이티브 구글 로그인: iOS용 OAuth 클라이언트 ID (없으면 앱에서 구글 로그인 버튼을 숨긴다)
 const googleIos = /^[0-9A-Za-z._-]+\.apps\.googleusercontent\.com$/.test(process.env.GOOGLE_IOS_CLIENT_ID ?? '') ? process.env.GOOGLE_IOS_CLIENT_ID : '';
 const googleWeb = process.env.GOOGLE_WEB_CLIENT_ID || '994205737094-50gr21rv5gd4jmrk3drgq3462k6k2rj7.apps.googleusercontent.com';
@@ -43,7 +48,11 @@ await build({
   minify: true,
   target: 'safari15',
   define: {
-    __ADS__: JSON.stringify({ ios: { banner: ads.ios.banner, rewarded: ads.ios.rewarded }, testing }),
+    __ADS__: JSON.stringify({
+      ios: { banner: ads.ios.banner, rewarded: ads.ios.rewarded },
+      android: { banner: ads.android.banner, rewarded: ads.android.rewarded },
+      testing: testingBy,
+    }),
     __AUTH__: JSON.stringify({ googleIos, googleWeb }),
   },
   logLevel: 'warning',
@@ -57,5 +66,5 @@ const html = fs
 if (!html.includes('js/cap.js')) {
   fs.writeFileSync(indexFile, html.replace('<script type="module" src="js/app.js"></script>', '<script src="js/cap.js"></script>\n  <script type="module" src="js/app.js"></script>'));
 }
-fs.writeFileSync(path.join(root, 'www-ads.json'), JSON.stringify({ iosAppId: ads.ios.appId, testing, googleIos }));
-console.log(`www 준비 완료 (서버 ${API_BASE}, 광고 ${testing ? '테스트' : '실제'} ID, 앱 구글 로그인 ${googleIos ? '켜짐' : '꺼짐'})`);
+fs.writeFileSync(path.join(root, 'www-ads.json'), JSON.stringify({ iosAppId: ads.ios.appId, androidAppId: ads.android.appId, testing, testingAndroid: testingBy.android, googleIos }));
+console.log(`www 준비 완료 (서버 ${API_BASE}, 광고 iOS ${testing ? '테스트' : '실제'}·안드로이드 ${testingBy.android ? '테스트' : '실제'} ID, 앱 구글 로그인 ${googleIos ? '켜짐' : '꺼짐'})`);

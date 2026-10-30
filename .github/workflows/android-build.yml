@@ -1,0 +1,101 @@
+# 안드로이드 앱 빌드 (수동 실행)
+# - 업로드 키 Secrets가 있으면: 서명된 AAB(플레이스토어 업로드용)와 APK(직접 설치용)
+# - 없으면: 디버그 APK만
+# 필요한 Secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (선택: ANDROID_KEY_PASSWORD)
+# 선택 Variables: ADMOB_ANDROID_APP_ID, ADMOB_ANDROID_BANNER_ID, ADMOB_ANDROID_REWARDED_ID (없으면 구글 테스트 광고)
+name: 안드로이드 빌드
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+      ADMOB_ANDROID_APP_ID: ${{ vars.ADMOB_ANDROID_APP_ID }}
+      ADMOB_ANDROID_BANNER_ID: ${{ vars.ADMOB_ANDROID_BANNER_ID }}
+      ADMOB_ANDROID_REWARDED_ID: ${{ vars.ADMOB_ANDROID_REWARDED_ID }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: 웹 묶기 + 안드로이드 동기화
+        run: |
+          npm ci
+          npm run build:web
+          npx cap sync android
+
+      - name: 업로드 키 준비
+        id: key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "::notice title=서명::업로드 키 Secrets가 없어 디버그 APK만 만들어요"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KS="$RUNNER_TEMP/upload.jks"
+          echo "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$KS"
+          ALIAS="${ANDROID_KEY_ALIAS:-upload}"
+          SHA1=$(keytool -list -v -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ALIAS" | grep -m1 'SHA1:' | sed 's/.*SHA1: *//')
+          if [ -z "$SHA1" ]; then
+            echo "::error title=서명::업로드 키를 열지 못했어요. 비밀번호(ANDROID_KEYSTORE_PASSWORD)와 별칭(ANDROID_KEY_ALIAS)을 확인해 주세요"
+            exit 1
+          fi
+          echo "::notice title=업로드 키 SHA-1::$SHA1 (구글 클라우드 Android OAuth 클라이언트에 등록할 값)"
+          echo "ANDROID_KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 빌드 (서명)
+        if: steps.key.outputs.signed == 'true'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: app/android
+        run: |
+          ./gradlew --no-daemon bundleRelease assembleRelease
+          mkdir -p ../out
+          cp app/build/outputs/bundle/release/app-release.aab "../out/yahchoo-$BUILD_NUMBER.aab"
+          cp app/build/outputs/apk/release/app-release.apk "../out/yahchoo-$BUILD_NUMBER.apk"
+          echo "::notice title=빌드::버전 1.0.0 ($BUILD_NUMBER) 서명된 AAB·APK 완료. 아래 Artifacts에서 받으세요"
+
+      - name: 빌드 (디버그)
+        if: steps.key.outputs.signed != 'true'
+        working-directory: app/android
+        run: |
+          ./gradlew --no-daemon assembleDebug
+          mkdir -p ../out
+          cp app/build/outputs/apk/debug/app-debug.apk "../out/yahchoo-$BUILD_NUMBER-debug.apk"
+          SHA1=$(keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | grep -m1 'SHA1:' | sed 's/.*SHA1: *//')
+          echo "::notice title=디버그 APK::버전 1.0.0 ($BUILD_NUMBER), 디버그 키 SHA-1 $SHA1 (이 빌드는 매번 다른 키라 구글 로그인 테스트용으로는 안 맞아요)"
+
+      - name: 광고 설정 확인
+        run: |
+          echo "::notice title=광고::AdMob 앱 ID $(node -p "require('./www-ads.json').androidAppId") ($(node -p "require('./www-ads.json').testingAndroid ? '테스트 광고' : '실제 광고'"))"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: yahchoo-android-${{ github.run_number }}
+          path: app/out/
+          retention-days: 30

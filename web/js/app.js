@@ -22,7 +22,7 @@ import {
 import { GOOGLE_CLIENT_ID } from './config.js';
 import { JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
 import { fillAds, prepareRewarded, rewardedAvailable, startNativeAds, watchRewarded } from './ads.js';
-import { haptic, inApp, share } from './native.js';
+import { haptic, inApp, native, share } from './native.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -2256,3 +2256,22 @@ function boot() {
 }
 
 boot();
+
+/* ---------------------------------------------------------------- 안드로이드 뒤로가기 */
+// 팝업이 열려 있으면 닫고, 게임·대기실은 나가기 확인, 다른 화면은 처음으로, 처음 화면에서는 앱 종료 확인.
+function onAndroidBack() {
+  const open = [...document.querySelectorAll('.overlay:not([hidden])')].pop();
+  if (open) {
+    if (open.id === 'result') nudgeResult();
+    else if (open.id === 'confirm' || open.id === 'rules' || open.id === 'login' || open.id === 'watchers') closeOverlay(open.id);
+    return; // 닉네임 정하기·추적 안내는 버튼으로만 닫는다
+  }
+  if (!$('home').hidden) {
+    confirmExit('오늘도 야추를 종료할까요?', () => native.App.exitApp(), '종료');
+    return;
+  }
+  if (!$('game').hidden) return void $('game-exit').click();
+  if (!$('lobby').hidden) return void $('lobby-leave').click();
+  showHome();
+}
+if (native?.platform === 'android') native.App.addListener('backButton', onAndroidBack);

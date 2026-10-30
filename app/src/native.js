@@ -10,11 +10,13 @@ import { App } from '@capacitor/app';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 
 /* global __ADS__, __AUTH__ */
+const platform = Capacitor.getPlatform();
 window.YachooNative = {
   isNative: Capacitor.isNativePlatform(),
-  platform: Capacitor.getPlatform(),
-  ads: __ADS__,
-  /** 앱용 구글 로그인 설정 { googleIos, googleWeb } (googleIos가 없으면 앱 구글 로그인 숨김) */
+  platform,
+  /** 이 플랫폼의 광고 단위 { banner, rewarded, testing } */
+  ads: { ...(__ADS__[platform] ?? {}), testing: !!__ADS__.testing[platform] },
+  /** 앱용 구글 로그인 설정 { googleIos, googleWeb } (iOS는 googleIos가 없으면 구글 로그인 숨김, 안드로이드는 googleWeb만 씀) */
   auth: __AUTH__,
   SocialLogin,
   SignInWithApple,

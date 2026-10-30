@@ -80,7 +80,7 @@ function updateBanner() {
     if (!nativeAds.created) {
       nativeAds.created = true;
       AdMob.showBanner({
-        adId: native.ads.ios.banner,
+        adId: native.ads.banner,
         adSize: 'ADAPTIVE_BANNER',
         position: 'BOTTOM_CENTER',
         margin: 0,
@@ -186,14 +186,14 @@ let rewardedLoad = null;
 
 /** 앱에서 보상형 광고를 쓸 수 있으면 true (웹은 항상 false) */
 export function rewardedAvailable() {
-  return !!(native?.AdMob && native.ads?.ios?.rewarded && nativeAds.ready);
+  return !!(native?.AdMob && native.ads?.rewarded && nativeAds.ready);
 }
 
 /** 미리 불러 둔다 (결과창이 열릴 때). 이미 불러 둔 게 있으면 그대로. */
 export function prepareRewarded() {
   if (!rewardedAvailable()) return Promise.reject(new Error('광고를 쓸 수 없어요'));
   if (!rewardedLoad) {
-    rewardedLoad = native.AdMob.prepareRewardVideoAd({ adId: native.ads.ios.rewarded, isTesting: native.ads.testing }).catch((err) => {
+    rewardedLoad = native.AdMob.prepareRewardVideoAd({ adId: native.ads.rewarded, isTesting: native.ads.testing }).catch((err) => {
       rewardedLoad = null;
       throw err;
     });

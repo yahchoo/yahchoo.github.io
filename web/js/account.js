@@ -89,12 +89,13 @@ export function loginAvailable() {
 }
 
 /* ---------------------------------------------------------------- 구글 로그인 (앱 전용, 네이티브) */
-// 앱 안 화면(WKWebView)에서는 구글이 웹 로그인을 막아서, 앱에서는 구글 로그인 SDK로 받은 ID 토큰을 서버로 보낸다.
+// 앱 안 화면(WebView)에서는 구글이 웹 로그인을 막아서, 앱에서는 구글 로그인 SDK로 받은 ID 토큰을 서버로 보낸다.
 
 function googleNative() {
   const app = globalThis.YachooNative;
-  if (!app?.isNative || app.platform !== 'ios' || !app.SocialLogin || !app.auth?.googleIos) return null;
-  return app;
+  if (!app?.isNative || !app.SocialLogin || !app.auth?.googleWeb) return null;
+  if (app.platform === 'ios') return app.auth.googleIos ? app : null;
+  return app.platform === 'android' ? app : null;
 }
 
 export function googleNativeAvailable() {
@@ -107,9 +108,11 @@ let googleReady = null;
 export async function googleNativeLogin() {
   const app = googleNative();
   if (!app) throw new Error('구글 로그인을 쓸 수 없어요');
-  googleReady ??= app.SocialLogin.initialize({
-    google: { iOSClientId: app.auth.googleIos, iOSServerClientId: app.auth.googleWeb, mode: 'online' },
-  }).catch((err) => {
+  // 안드로이드는 웹 클라이언트 ID로 토큰을 받는다 (토큰 aud가 웹 ID라 서버 설정 그대로 통과)
+  const google = app.platform === 'ios'
+    ? { iOSClientId: app.auth.googleIos, iOSServerClientId: app.auth.googleWeb, mode: 'online' }
+    : { webClientId: app.auth.googleWeb, mode: 'online' };
+  googleReady ??= app.SocialLogin.initialize({ google }).catch((err) => {
     googleReady = null;
     throw err;
   });
