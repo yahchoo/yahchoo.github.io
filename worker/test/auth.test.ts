@@ -63,3 +63,14 @@ describe('로그인 토큰', () => {
     expect(await hashToken(a)).toMatch(/^[0-9a-f]{64}$/);
   });
 });
+
+import { kstDayStart } from '../src/account';
+
+describe('광고 2배 하루 제한의 기준 시각', () => {
+  it('한국 시간 자정으로 끊는다', () => {
+    // 2026-10-30 23:59 KST = 14:59 UTC → 그날 0시 KST = 2026-10-29 15:00 UTC
+    expect(kstDayStart(Date.UTC(2026, 9, 30, 14, 59))).toBe(Date.UTC(2026, 9, 29, 15, 0));
+    // 2026-10-31 00:00 KST = 15:00 UTC → 새 날
+    expect(kstDayStart(Date.UTC(2026, 9, 30, 15, 0))).toBe(Date.UTC(2026, 9, 30, 15, 0));
+  });
+});

@@ -14,6 +14,7 @@ import {
   verifyAppleNotification,
 } from './apple';
 import { DEFAULT_AVATAR, ITEM_BY_ID, parseAvatar, validateAvatar } from '../../web/js/avatar.js';
+import { DOUBLE_DAILY_LIMIT } from '../../web/js/points.js';
 import { RoomError, cleanName } from './match';
 import { NICKNAME_CHANGE_COST } from '../../web/js/points.js';
 
@@ -61,7 +62,25 @@ export async function meView(env: Env, user: UserRow) {
     points: user.points,
     avatar: parseAvatar(user.avatar),
     owned: await ownedItems(env, user.id),
+    double: await doubleStatus(env, user.id),
   };
+}
+
+/** 한국 시간 오늘 0시 (밀리초) */
+export function kstDayStart(now: number): number {
+  const KST = 9 * 60 * 60 * 1000;
+  return Math.floor((now + KST) / 86_400_000) * 86_400_000 - KST;
+}
+
+/** 오늘 남은 '광고 보고 2배' 횟수 */
+async function doubleStatus(env: Env, userId: string, now = Date.now()) {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM point_log WHERE user_id = ? AND reason IN ('double-solo', 'double-match') AND created_at >= ?",
+  )
+    .bind(userId, kstDayStart(now))
+    .first<{ n: number }>();
+  const used = row?.n ?? 0;
+  return { limit: DOUBLE_DAILY_LIMIT, left: Math.max(0, DOUBLE_DAILY_LIMIT - used) };
 }
 
 /**
@@ -285,11 +304,31 @@ async function doublePoints(request: Request, env: Env): Promise<Response> {
     .bind(user.id, kind, ref)
     .first<{ amount: number; created_at: number }>();
   if (!base || base.amount <= 0) throw new HttpError(404, '2배로 받을 포인트가 없어요');
-  if (Date.now() - base.created_at > DOUBLE_WINDOW_MS) throw new HttpError(409, '2배 받기 시간이 지났어요');
-  const granted = await grantPoints(env, user.id, base.amount, `double-${kind}`, ref);
-  if (!granted) throw new HttpError(409, '이미 2배를 받았어요');
+  const now = Date.now();
+  if (now - base.created_at > DOUBLE_WINDOW_MS) throw new HttpError(409, '2배 받기 시간이 지났어요');
+  // 하루 횟수 제한까지 한 트랜잭션 안에서 확인한다 (동시에 여러 번 눌러도 넘지 않게).
+  const reason = `double-${kind}`;
+  const [updated] = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users SET points = points + ?1, updated_at = ?5
+        WHERE id = ?2
+          AND NOT EXISTS (SELECT 1 FROM point_log WHERE user_id = ?2 AND reason = ?3 AND ref = ?4)
+          AND (SELECT COUNT(*) FROM point_log
+                WHERE user_id = ?2 AND reason IN ('double-solo', 'double-match') AND created_at >= ?6) < ?7`,
+    ).bind(base.amount, user.id, reason, ref, now, kstDayStart(now), DOUBLE_DAILY_LIMIT),
+    env.DB.prepare(
+      `INSERT INTO point_log (user_id, amount, reason, ref, created_at)
+       SELECT ?1, ?2, ?3, ?4, ?5 WHERE changes() > 0
+       ON CONFLICT DO NOTHING`,
+    ).bind(user.id, base.amount, reason, ref, now),
+  ]);
+  if (updated.meta.changes === 0) {
+    const dup = await env.DB.prepare('SELECT 1 FROM point_log WHERE user_id = ? AND reason = ? AND ref = ?').bind(user.id, reason, ref).first();
+    if (dup) throw new HttpError(409, '이미 2배를 받았어요');
+    throw new HttpError(429, `오늘 2배는 ${DOUBLE_DAILY_LIMIT}번 다 받았어요. 자정에 다시 채워져요`);
+  }
   const me = await env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(user.id).first<{ points: number }>();
-  return json({ points: base.amount, balance: me?.points ?? 0 });
+  return json({ points: base.amount, balance: me?.points ?? 0, double: await doubleStatus(env, user.id, now) });
 }
 
 /** 로컬 개발 전용 로그인. .dev.vars에 DEV_LOGIN=1이 있고, localhost로 접속할 때만 동작한다. */

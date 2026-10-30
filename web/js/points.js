@@ -32,6 +32,9 @@ export function placeBonus(mode, rank) {
 /** 처음 정한 뒤 닉네임을 바꿀 때 드는 포인트 */
 export const NICKNAME_CHANGE_COST = 300;
 
+/** 앱 '광고 보고 포인트 2배'를 하루에 받을 수 있는 횟수 (한국 시간 자정에 다시 채워진다) */
+export const DOUBLE_DAILY_LIMIT = 5;
+
 /** @type {Record<string, { name: string, short: string, cost: number, verb: string }>} 관전자 야유 (쓸 때마다 포인트 차감) */
 export const JEERS = {
   hammer: { name: '뿅망치', short: '뿅망치', cost: 20, verb: '뿅망치!' },

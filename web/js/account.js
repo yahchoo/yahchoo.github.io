@@ -1,3 +1,4 @@
+import { DOUBLE_DAILY_LIMIT } from './points.js';
 // 계정: 로그인 토큰 보관, 서버 요청, 구글 로그인 버튼, 내 정보(포인트·아바타) 상태.
 
 import { GOOGLE_CLIENT_ID } from './config.js';
@@ -184,9 +185,21 @@ export async function appleLogin() {
 
 /** 앱에서 보상형 광고를 본 뒤: 그 판의 점수 포인트를 한 번 더 받는다. → { points, balance } */
 export async function doublePoints(kind, ref) {
-  const data = await api('/api/points/double', { kind, ref });
-  updatePoints(data.balance);
-  return data;
+  try {
+    const data = await api('/api/points/double', { kind, ref });
+    if (me && data.double) setMe({ ...me, points: data.balance, double: data.double });
+    else updatePoints(data.balance);
+    return data;
+  } catch (err) {
+    // 오늘 횟수를 다 썼으면 남은 횟수를 0으로 맞춘다
+    if (me && /다 받았어요/.test(err?.message ?? '')) setMe({ ...me, double: { ...(me.double ?? { limit: DOUBLE_DAILY_LIMIT }), left: 0 } });
+    throw err;
+  }
+}
+
+/** 오늘 남은 '광고 보고 2배' 횟수 { left, limit } (모르면 null) */
+export function doubleStatus() {
+  return me?.double ?? null;
 }
 
 /** 계정 삭제: 포인트·아이템·랭킹·기록을 모두 지우고 이 기기에서도 로그아웃한다. Apple 계정은 연결도 해제된다. */

@@ -16,11 +16,11 @@ import { bestScore, claimSolo, clearSoloSaves, fetchRankings, hasSoloInProgress,
 import { RoomConnection, activeRoom, apiBase, createRoom } from './net.js';
 import { ITEMS, ITEM_BY_ID, SLOTS, renderAvatar } from './avatar.js';
 import {
-  appleLogin, appleLoginAvailable, authToken, googleNativeAvailable, googleNativeLogin, buyItem, currentUser, deleteAccount, devLogin, doublePoints, isLocalDev, loginAvailable, logout, mountGoogleButton,
+  appleLogin, appleLoginAvailable, authToken, googleNativeAvailable, googleNativeLogin, buyItem, currentUser, deleteAccount, devLogin, doublePoints, doubleStatus, isLocalDev, loginAvailable, logout, mountGoogleButton,
   onAccountChange, refreshMe, saveProfile, updatePoints,
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
-import { JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
+import { DOUBLE_DAILY_LIMIT, JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
 import { fillAds, prepareRewarded, rewardedAvailable, startNativeAds, watchRewarded } from './ads.js';
 import { haptic, inApp, native, share } from './native.js';
 
@@ -1036,10 +1036,20 @@ function renderDoubleOffer(box, kind, ref, base) {
       row.append(el('span', 'points-chip double-done', `+${doubled.get(key).toLocaleString()}P 더 받았어요 (2배)`));
       return;
     }
+    const status = doubleStatus();
+    const limit = status?.limit ?? DOUBLE_DAILY_LIMIT;
+    if (status && status.left <= 0) {
+      row.append(
+        el('span', 'points-chip double-used', `오늘 2배 ${limit}번을 다 받았어요`),
+        el('small', 'double-note', '자정(한국 시간)에 다시 채워져요'),
+      );
+      return;
+    }
     const b = el('button', 'btn btn-reward wide');
     b.type = 'button';
     b.append(el('span', 'play', '▶'), el('span', '', `광고 보고 +${base.toLocaleString()}P 더 받기`));
-    const note = el('small', 'double-note', '점수 포인트 2배 · 승리·참가 보너스는 제외');
+    const left = status ? `오늘 ${status.left}/${limit}번 남음` : `하루 ${limit}번`;
+    const note = el('small', 'double-note', `${left} · 점수 포인트 2배 · 승리·참가 보너스는 제외`);
     b.addEventListener('click', async () => {
       b.disabled = true;
       b.lastChild.textContent = '광고 불러오는 중…';
@@ -1060,7 +1070,7 @@ function renderDoubleOffer(box, kind, ref, base) {
           return;
         }
       } catch (err) {
-        if (/이미/.test(err.message ?? '')) doubled.set(key, base);
+        if (/이미 2배/.test(err.message ?? '')) doubled.set(key, base);
         else toast(err.message ?? '잠시 후 다시 시도해 주세요');
       }
       paint();
