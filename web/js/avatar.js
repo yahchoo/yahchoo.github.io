@@ -15,19 +15,22 @@ export const SLOTS = [
   { id: 'bg', name: '배경', optional: false },
 ];
 
+/** 유료 캐릭터는 모두 같은 가격 (처음 고르는 고양이·강아지·남자·여자는 무료) */
+export const ANIMAL_PRICE = 500;
+
 /** @type {{ id: string, slot: Slot, name: string, price: number }[]} */
 export const ITEMS = [
   { id: 'cat', slot: 'animal', name: '고양이', price: 0 },
   { id: 'dog', slot: 'animal', name: '강아지', price: 0 },
   { id: 'man', slot: 'animal', name: '남자', price: 0 },
   { id: 'woman', slot: 'animal', name: '여자', price: 0 },
-  { id: 'mouse', slot: 'animal', name: '쥐', price: 300 },
-  { id: 'frog', slot: 'animal', name: '개구리', price: 300 },
-  { id: 'beaver', slot: 'animal', name: '비버', price: 500 },
-  { id: 'seal', slot: 'animal', name: '물범', price: 500 },
-  { id: 'parrot', slot: 'animal', name: '앵무새', price: 800 },
-  { id: 'wolf', slot: 'animal', name: '늑대', price: 1000 },
-  { id: 'giraffe', slot: 'animal', name: '기린', price: 1200 },
+  { id: 'mouse', slot: 'animal', name: '쥐', price: ANIMAL_PRICE },
+  { id: 'frog', slot: 'animal', name: '개구리', price: ANIMAL_PRICE },
+  { id: 'beaver', slot: 'animal', name: '비버', price: ANIMAL_PRICE },
+  { id: 'seal', slot: 'animal', name: '물범', price: ANIMAL_PRICE },
+  { id: 'parrot', slot: 'animal', name: '앵무새', price: ANIMAL_PRICE },
+  { id: 'wolf', slot: 'animal', name: '늑대', price: ANIMAL_PRICE },
+  { id: 'giraffe', slot: 'animal', name: '기린', price: ANIMAL_PRICE },
 
   { id: 'beanie', slot: 'hat', name: '털모자', price: 150 },
   { id: 'ribbon', slot: 'hat', name: '리본', price: 150 },
