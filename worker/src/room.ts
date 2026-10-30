@@ -61,6 +61,17 @@ export class YachtRoom extends DurableObject<Env> {
   /** 관전자별 마지막 응원 시각 (잠들면 비워져도 괜찮다). */
   private lastCheer = new WeakMap<WebSocket, number>();
   private lastJeer = new WeakMap<WebSocket, number>();
+  /**
+   * 방 상태 변경을 한 번에 하나씩 처리한다.
+   * 상태를 읽은 뒤 바깥 요청(로그인 확인·포인트 지급 같은 D1 조회)을 기다리는 동안 다른 사람의 입장·퇴장이 끼어들면,
+   * 예전 상태로 덮어써서 그 변경이 사라진다(입장한 사람이 빈자리로 보이거나, 나간 사람이 남아 보임). 이를 막는다.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     // 접속 유지용 ping은 객체를 깨우지 않고 바로 응답한다.
@@ -146,6 +157,10 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
+    return this.serial(() => this.handleFetch(request));
+  }
+
+  private async handleFetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === '/init') {
@@ -224,6 +239,10 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    await this.serial(() => this.handleMessage(ws, message));
+  }
+
+  private async handleMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
     if (!att || typeof message !== 'string') return;
     // 관전자는 보기와 응원만 한다.
@@ -411,7 +430,7 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number): Promise<void> {
-    await this.onSocketGone(ws);
+    await this.serial(() => this.onSocketGone(ws));
     try {
       ws.close(code === 1005 ? 1000 : code, 'closed');
     } catch {
@@ -420,10 +439,14 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    await this.onSocketGone(ws);
+    await this.serial(() => this.onSocketGone(ws));
   }
 
   async alarm(): Promise<void> {
+    await this.serial(() => this.handleAlarm());
+  }
+
+  private async handleAlarm(): Promise<void> {
     const state = await this.load();
     if (!state) return;
     const now = Date.now();
