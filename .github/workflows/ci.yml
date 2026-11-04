@@ -182,7 +182,8 @@ jobs:
       # 구글 로그인: 저장소 변수 GOOGLE_CLIENT_ID (서버가 없으면 로그인도 쓰지 않는다)
       - name: Write server address
         env:
-          API_BASE_URL: ${{ vars.API_BASE_URL || needs.deploy-worker.outputs.url }}
+          # 서버 주소: 저장소 변수 API_BASE_URL이 있으면 그 값, 없으면 공용 API 도메인 https://api.ohsangplay.com/yahchoo
+          API_BASE_URL: ${{ vars.API_BASE_URL || (needs.deploy-worker.outputs.url && 'https://api.ohsangplay.com/yahchoo') || '' }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || '994205737094-50gr21rv5gd4jmrk3drgq3462k6k2rj7.apps.googleusercontent.com' }}
           # 애드센스: 저장소 변수 ADSENSE_CLIENT(ca-pub-…), ADSENSE_SLOTS(JSON). 없으면 광고 없이 배포한다.
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT || '' }}

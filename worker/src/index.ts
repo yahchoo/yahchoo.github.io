@@ -19,6 +19,7 @@ import { HttpError, json, readJson } from './http';
 import { accountRoute, grantPoints, optionalUser, requireUser } from './account';
 import { parseAvatar } from '../../web/js/avatar.js';
 import { scorePoints } from '../../web/js/points.js';
+import { withoutPrefix } from './routing';
 
 export { YachtRoom };
 
@@ -446,6 +447,8 @@ async function route(request: Request, env: Env): Promise<Response> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // api.ohsangplay.com/yahchoo/… 로 들어오면 /yahchoo를 떼고 처리한다.
+    request = withoutPrefix(request);
     const cors = corsHeaders(request, env);
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors });

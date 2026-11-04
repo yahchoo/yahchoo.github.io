@@ -2,6 +2,15 @@ name = "yacht-dice-api"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
+# 서버 주소: https://api.ohsangplay.com/yahchoo (오상플레이 공용 API 도메인을 앱마다 경로로 나눠 쓴다)
+# Cloudflare DNS에 api.ohsangplay.com 레코드(AAAA 100::, 프록시됨)가 있어야 한다. /yahchoo는 src/routing.ts가 떼고 처리한다.
+routes = [
+  { pattern = "api.ohsangplay.com/yahchoo/*", zone_name = "ohsangplay.com" },
+]
+# 예전 주소(yacht-dice-api.<계정>.workers.dev)도 켜 둔다. 이미 설치된 TestFlight 빌드가 이 주소를 쓴다.
+# routes가 있으면 기본값이 꺼짐이라 명시한다.
+workers_dev = true
+
 # 등록하지 않은 오래된 혼자 하기 게임을 하루에 한 번 정리한다.
 [triggers]
 crons = ["23 18 * * *"]

@@ -13,7 +13,7 @@ const www = path.join(root, 'www');
 fs.rmSync(www, { recursive: true, force: true });
 fs.cpSync(web, www, { recursive: true, filter: (src) => !/[\\/](CNAME)$/.test(src) });
 
-const API_BASE = process.env.API_BASE || 'https://yacht-dice-api.shark-keeper.workers.dev';
+const API_BASE = process.env.API_BASE || 'https://api.ohsangplay.com/yahchoo';
 fs.writeFileSync(
   path.join(www, 'js', 'config.js'),
   [
