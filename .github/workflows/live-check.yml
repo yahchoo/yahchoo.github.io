@@ -1,0 +1,39 @@
+# 서버 주소 점검 (손으로 실행). 새 주소·예전 주소가 응답하는지, 웹이 어떤 주소를 쓰는지 본다.
+name: 서버 주소 점검
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 점검
+        run: |
+          ok=true
+          check() {
+            local name="$1" url="$2"
+            local body code
+            code=$(curl -s -o /tmp/body -w '%{http_code}' -m 15 -H 'Origin: https://yahchoo.ohsangplay.com' "$url/api/health" || echo 000)
+            body=$(head -c 200 /tmp/body 2>/dev/null)
+            if [ "$code" = 200 ] && echo "$body" | grep -q '"ok":true'; then
+              echo "::notice title=$name::$url 응답 정상"
+            else
+              echo "::error title=$name::$url 응답 $code $body"; ok=false
+            fi
+          }
+          check "새 주소" "https://api.ohsangplay.com/yahchoo"
+          check "예전 주소" "https://yacht-dice-api.shark-keeper.workers.dev"
+          # 같이 하기(WebSocket) 경로: 업그레이드 없이 부르면 426이 나와야 Worker까지 닿은 것
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "https://api.ohsangplay.com/yahchoo/api/rooms/ZZZZ/ws" || echo 000)
+          echo "::notice title=같이 하기 경로::새 주소 /api/rooms/…/ws 응답 $code (426이나 101이면 Worker까지 닿음)"
+          # CORS: 웹 주소에서 부를 수 있는지
+          cors=$(curl -s -D - -o /dev/null -m 15 -X OPTIONS -H 'Origin: https://yahchoo.ohsangplay.com' -H 'Access-Control-Request-Method: POST' "https://api.ohsangplay.com/yahchoo/api/solo/start" | grep -i '^access-control-allow-origin' | tr -d '\r')
+          echo "::notice title=CORS::${cors:-없음}"
+          # 웹 사이트가 쓰는 서버 주소
+          web=$(curl -s -m 15 "https://yahchoo.ohsangplay.com/js/config.js?t=$(date +%s)" | grep API_BASE | head -1)
+          echo "::notice title=웹 설정::$web"
+          $ok
