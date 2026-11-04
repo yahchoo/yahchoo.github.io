@@ -2,11 +2,18 @@
 # - 업로드 키 Secrets가 있으면: 서명된 AAB(플레이스토어 업로드용)와 APK(직접 설치용)
 # - 없으면: 디버그 APK만
 # 필요한 Secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (선택: ANDROID_KEY_PASSWORD)
+# 선택 Secrets: PLAY_SERVICE_ACCOUNT_JSON (Play 자동 업로드용 서비스 계정 JSON)
 # 선택 Variables: ADMOB_ANDROID_APP_ID, ADMOB_ANDROID_BANNER_ID, ADMOB_ANDROID_REWARDED_ID (없으면 구글 테스트 광고)
 name: 안드로이드 빌드
 
 on:
   workflow_dispatch:
+    inputs:
+      play_track:
+        description: 'Play 스토어에 올리기 (none: 안 올림, internal: 내부 테스트, alpha: 비공개 테스트) — 첫 AAB는 Play Console에서 직접 올려야 해요'
+        type: choice
+        options: [none, internal, alpha]
+        default: none
 
 permissions:
   contents: read
@@ -102,3 +109,22 @@ jobs:
           name: yahchoo-android-${{ github.run_number }}
           path: app/out/
           retention-days: 30
+
+      - name: Play 스토어에 올리기
+        if: inputs.play_track != 'none' && steps.key.outputs.signed == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.ohsang.play.yahchoo
+          releaseFiles: app/out/*.aab
+          track: ${{ inputs.play_track }}
+          status: draft
+
+      - name: Play 업로드 결과
+        if: inputs.play_track != 'none'
+        run: |
+          if [ "${{ steps.key.outputs.signed }}" != "true" ]; then
+            echo "::warning title=Play 업로드::업로드 키가 없어 올리지 않았어요"
+          else
+            echo "::notice title=Play 업로드::${{ inputs.play_track }} 트랙에 초안으로 올렸어요 (버전 코드 $BUILD_NUMBER). Play Console에서 출시 노트를 넣고 검토를 위해 전송하세요"
+          fi
