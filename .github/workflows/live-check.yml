@@ -50,6 +50,16 @@ jobs:
               echo "::notice title=애플 알림 $m::$base → $out $srv $(head -c 120 /tmp/n | tr -d '\n')"
             done
           done
-          tls=$(echo | openssl s_client -connect api.ohsangplay.com:443 -servername api.ohsangplay.com 2>/dev/null | grep -E 'Protocol|subject=|issuer=' | tr '\n' ' ')
-          echo "::notice title=인증서::$tls"
           $ok
+
+      - name: 인증서·DNS
+        run: |
+          for h in api.ohsangplay.com yacht-dice-api.shark-keeper.workers.dev; do
+            t12=$(echo | openssl s_client -tls1_2 -connect $h:443 -servername $h 2>/dev/null | grep -m1 -E '^ *Protocol|Cipher is' | tr -s ' ')
+            chain=$(echo | openssl s_client -showcerts -connect $h:443 -servername $h 2>/dev/null | grep -E '^ *[0-9] s:|i:' | tr -s ' ' | tr '\n' ' ' | head -c 400)
+            sig=$(echo | openssl s_client -connect $h:443 -servername $h 2>/dev/null | openssl x509 -noout -text 2>/dev/null | grep -m1 'Signature Algorithm' | tr -s ' ')
+            v=$(echo | openssl s_client -connect $h:443 -servername $h -verify_return_error 2>&1 | grep -m1 'Verify return code' | tr -s ' ')
+            echo "::notice title=TLS $h::1.2: $t12 / $sig / $v"
+            echo "::notice title=체인 $h::$chain"
+            echo "::notice title=DNS $h::A $(dig +short A $h | tr '\n' ' ') AAAA $(dig +short AAAA $h | tr '\n' ' ') CAA $(dig +short CAA ohsangplay.com | tr '\n' ' ')"
+          done
