@@ -36,4 +36,20 @@ jobs:
           # 웹 사이트가 쓰는 서버 주소
           web=$(curl -s -m 15 "https://yahchoo.ohsangplay.com/js/config.js?t=$(date +%s)" | grep API_BASE | head -1)
           echo "::notice title=웹 설정::$web"
+          # 애플 알림 주소: 애플 검사기가 보는 것처럼 GET·POST 해 본다 (보안 챌린지 페이지가 끼는지)
+          for base in "https://api.ohsangplay.com/yahchoo" "https://yacht-dice-api.shark-keeper.workers.dev"; do
+            for m in GET HEAD POST; do
+              if [ "$m" = POST ]; then
+                out=$(curl -s -o /tmp/n -D /tmp/h -w '%{http_code}' -m 15 -X POST -A 'Apple' -H 'Content-Type: application/json' -d '{}' "$base/api/auth/apple/notify" || echo 000)
+              elif [ "$m" = HEAD ]; then
+                out=$(curl -s -o /tmp/n -D /tmp/h -w '%{http_code}' -m 15 -I -A 'Apple' "$base/api/auth/apple/notify" || echo 000)
+              else
+                out=$(curl -s -o /tmp/n -D /tmp/h -w '%{http_code}' -m 15 -A 'Apple' "$base/api/auth/apple/notify" || echo 000)
+              fi
+              srv=$(grep -i '^server:\|^cf-mitigated' /tmp/h | tr -d '\r' | tr '\n' ' ')
+              echo "::notice title=애플 알림 $m::$base → $out $srv $(head -c 120 /tmp/n | tr -d '\n')"
+            done
+          done
+          tls=$(echo | openssl s_client -connect api.ohsangplay.com:443 -servername api.ohsangplay.com 2>/dev/null | grep -E 'Protocol|subject=|issuer=' | tr '\n' ' ')
+          echo "::notice title=인증서::$tls"
           $ok
