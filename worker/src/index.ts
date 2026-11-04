@@ -90,6 +90,7 @@ function connectRoom(request: Request, env: Env, code: string, url: URL): Promis
   const origin = request.headers.get('Origin');
   if (origin && !isAllowedOrigin(origin, env)) throw new HttpError(403, '허용되지 않은 주소예요');
   if (!isRoomCode(code)) throw new HttpError(400, '방 코드가 올바르지 않아요');
+  if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'WebSocket 연결이 필요해요');
   const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
   return stub.fetch(`https://room/ws${url.search}`, request);
 }
