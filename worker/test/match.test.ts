@@ -204,10 +204,34 @@ describe('시간 초과', () => {
     start(s, 'p0', T0, first);
     const id = current(s);
     expect(expireTurn(s, T0 + TURN_MS - 1, first)).toBe(false);
-    expect(expireTurn(s, T0 + TURN_MS, () => 0.99)).toBe(true); // 6,6,6,6,6
+    // 한 번도 안 굴렸으면 굴려 주지 않고 손해가 가장 적은 칸(1)에 0점
+    expect(expireTurn(s, T0 + TURN_MS, () => 0.99)).toBe(true);
+    expect(s.game!.sheets[id].ones).toBe(0);
+    expect(s.game!.sheets[id].yacht).toBeUndefined();
+    expect(s.game!.lastScored).toMatchObject({ playerId: id, category: 'ones', score: 0, auto: true, scratch: true });
+    expect(current(s)).not.toBe(id);
+  });
+
+  it('굴린 뒤 시간이 지나면 그 주사위로 가장 높은 칸에 적는다', () => {
+    const { s } = room('1v1', 2);
+    start(s, 'p0', T0, first);
+    const id = current(s);
+    roll(s, id, T0 + 1000, () => 0.99); // 6,6,6,6,6
+    const deadline = s.game!.turnDeadline!;
+    expect(expireTurn(s, deadline, first)).toBe(true);
     expect(s.game!.sheets[id].yacht).toBe(50);
     expect(s.game!.lastScored).toMatchObject({ playerId: id, category: 'yacht', auto: true });
-    expect(current(s)).not.toBe(id);
+    expect(s.game!.lastScored!.scratch).toBeUndefined();
+  });
+
+  it('안 굴리고 시간이 지나면 이미 채운 칸은 건너뛰고 다음 칸에 0점', () => {
+    const { s } = room('1v1', 2);
+    start(s, 'p0', T0, first);
+    const id = current(s);
+    s.game!.sheets[id].ones = 3;
+    s.game!.sheets[id].twos = 4;
+    expect(expireTurn(s, s.game!.turnDeadline!, first)).toBe(true);
+    expect(s.game!.sheets[id].threes).toBe(0);
   });
 
   it('차례인 사람의 연결이 끊기면 10초만 기다린다', () => {

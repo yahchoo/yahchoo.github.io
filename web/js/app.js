@@ -1530,11 +1530,12 @@ function onRoomState(view) {
       const first = ui.lastScoredKey === null && prev === null;
       if (!first) justScored = g.lastScored;
       ui.lastScoredKey = key;
-      const { seat, category, score, auto } = g.lastScored;
+      const { seat, category, score, auto, scratch } = g.lastScored;
       const what = `${CATEGORY_INFO[category].name} ${score}점`;
       if (!first) {
-        if (seat === view.you && auto) toast(`시간이 지나 ${what}을 대신 적었어요`);
-        else if (seat !== view.you) toast(`${nameOf(seat)}: ${what}${auto ? ' (시간 초과)' : ''}`);
+        if (seat === view.you && scratch) toast(`시간 안에 굴리지 않아 ${CATEGORY_INFO[category].name}에 0점을 적었어요`);
+        else if (seat === view.you && auto) toast(`시간이 지나 ${what}을 대신 적었어요`);
+        else if (seat !== view.you) toast(`${nameOf(seat)}: ${what}${scratch ? ' (안 굴리고 시간 초과)' : auto ? ' (시간 초과)' : ''}`);
       }
     }
   }

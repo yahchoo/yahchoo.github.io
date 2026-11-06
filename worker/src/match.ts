@@ -10,6 +10,7 @@ import {
   DICE_COUNT,
   ROLLS_PER_TURN,
   autoCategory,
+  scratchCategory,
   bonusFor,
   isCategory,
   isComplete,
@@ -77,6 +78,8 @@ export interface ScoredEvent {
   score: number;
   /** 시간이 다 돼서 대신 적었다. */
   auto: boolean;
+  /** 한 번도 굴리지 않아 0점을 적었다. */
+  scratch?: boolean;
 }
 
 export interface Game {
@@ -359,11 +362,11 @@ function advance(state: RoomState, game: Game, now: number): void {
   finish(state, game, 'complete', now);
 }
 
-function write(state: RoomState, game: Game, category: Category, auto: boolean, now: number): void {
+function write(state: RoomState, game: Game, category: Category, auto: boolean, now: number, scratch = false): void {
   const playerId = game.order[game.turn];
-  const score = scoreFor(category, game.dice);
+  const score = scratch ? 0 : scoreFor(category, game.dice);
   game.sheets[playerId][category] = score;
-  game.lastScored = { playerId, category, score, auto };
+  game.lastScored = { playerId, category, score, auto, ...(scratch ? { scratch: true } : {}) };
   state.updatedAt = now;
   advance(state, game, now);
 }
@@ -378,7 +381,9 @@ export function score(state: RoomState, playerId: string, category: unknown, now
 }
 
 /**
- * 제한 시간이 지났으면 대신 진행한다. 아직 안 굴렸으면 한 번 굴리고, 점수가 가장 높은 빈 칸에 적는다.
+ * 제한 시간이 지났으면 대신 진행한다.
+ * - 한 번이라도 굴렸으면 지금 주사위로 점수가 가장 높은 빈 칸에 적는다.
+ * - 한 번도 안 굴렸으면 손해가 가장 적은 빈 칸에 0점을 적는다 (가만히 있어도 점수를 얻지 않게).
  * 진행했으면 true.
  */
 export function expireTurn(state: RoomState, now: number, rand: () => number): boolean {
@@ -386,12 +391,11 @@ export function expireTurn(state: RoomState, now: number, rand: () => number): b
   if (state.phase !== 'playing' || !game || game.turnDeadline === null || now < game.turnDeadline) {
     return false;
   }
-  if (game.rollsLeft === ROLLS_PER_TURN) {
-    game.dice = rollDice(game.dice, Array(DICE_COUNT).fill(false), rand);
-    game.rollsLeft -= 1;
-    game.rollSeq += 1;
-  }
   const playerId = game.order[game.turn];
+  if (game.rollsLeft === ROLLS_PER_TURN) {
+    write(state, game, scratchCategory(game.sheets[playerId]), true, now, true);
+    return true;
+  }
   write(state, game, autoCategory(game.sheets[playerId], game.dice), true, now);
   return true;
 }
@@ -598,6 +602,7 @@ export function viewFor(state: RoomState, playerId: string | null, now: number, 
                 category: game.lastScored.category,
                 score: game.lastScored.score,
                 auto: game.lastScored.auto,
+                scratch: !!game.lastScored.scratch,
               }
             : null,
           endReason: game.endReason,

@@ -133,6 +133,23 @@ export function openCategories(sheet) {
   return CATEGORIES.filter((cat) => sheet[cat] === undefined);
 }
 
+/**
+ * 시간 안에 한 번도 굴리지 않았을 때 0점을 적을 칸. 손해가 가장 적은 칸부터.
+ * @param {Partial<Record<Category, number>>} sheet
+ * @returns {Category}
+ */
+export function scratchCategory(sheet) {
+  const cat = SCRATCH_ORDER.find((c) => sheet[c] === undefined);
+  if (!cat) throw new Error('적을 칸이 없어요');
+  return cat;
+}
+
+/** @type {Category[]} */
+const SCRATCH_ORDER = [
+  'ones', 'twos', 'threes', 'smallStraight', 'fours', 'largeStraight',
+  'fourKind', 'fullHouse', 'fives', 'sixes', 'choice', 'yacht',
+];
+
 // 시간이 다 됐을 때 대신 적을 칸을 고르는 순서. 점수가 같으면 앞쪽(버려도 아까움이 적은 칸)을 고른다.
 /** @type {Category[]} */
 const AUTO_PRIORITY = [
