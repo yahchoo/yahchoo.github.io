@@ -1,7 +1,7 @@
 // 카카오톡 등 메신저 안 브라우저에서 초대 링크를 열었을 때 앱이 있으면 앱으로 연다.
 // 메신저 안 브라우저는 Universal Links / App Links를 처리하지 않아서 직접 앱을 불러낸다.
 //  - 안드로이드: intent:// 주소로 앱을 바로 연다. 앱이 없으면 browser_fallback_url(이 페이지 + web=1)로 돌아와 웹으로 계속.
-//  - iPhone: 앱이 없을 때 오류 창이 뜨지 않도록, 위쪽 안내 막대의 "앱으로 열기"를 눌렀을 때만 yahchoo:// 로 연다.
+//  - iPhone: 바로 yahchoo:// 로 앱을 불러 보고, 앱이 없으면(1.5초 안에 넘어가지 않으면) 웹으로 계속하며 "앱으로 열기" 막대를 남긴다.
 
 const PACKAGE = 'com.ohsang.play.yahchoo';
 const SCHEME = 'yahchoo';
@@ -19,7 +19,21 @@ export function offerApp(code) {
     location.href = `intent://yahchoo.ohsangplay.com/?room=${code}#Intent;scheme=https;package=${PACKAGE};S.browser_fallback_url=${encodeURIComponent(back.toString())};end`;
     return;
   }
-  if (/iPhone|iPad|iPod/i.test(ua)) showBar(`${SCHEME}://join?room=${code}`);
+  if (/iPhone|iPad|iPod/i.test(ua)) tryOpenIos(`${SCHEME}://join?room=${code}`);
+}
+
+// iPhone: 바로 앱을 불러 본다. 앱으로 넘어가면 이 페이지가 가려지고(visibilitychange/pagehide),
+// 1.5초 안에 그런 일이 없으면 앱이 없다고 보고 웹으로 계속하면서 안내 막대만 남긴다.
+function tryOpenIos(appUrl) {
+  let left = false;
+  const mark = () => { left = true; };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) mark(); }, { once: true });
+  window.addEventListener('pagehide', mark, { once: true });
+  window.addEventListener('blur', mark, { once: true });
+  setTimeout(() => {
+    if (!left) showBar(appUrl);
+  }, 1500);
+  location.href = appUrl;
 }
 
 function showBar(appUrl) {
