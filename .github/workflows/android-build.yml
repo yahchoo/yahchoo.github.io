@@ -1,5 +1,5 @@
 # 안드로이드 앱 빌드 (수동 실행)
-# - 업로드 키 Secrets가 있으면: 서명된 AAB(플레이스토어 업로드용)와 APK(직접 설치용)
+# - 업로드 키 Secrets가 있으면: 서명된 AAB(플레이스토어 업로드용)
 # - 없으면: 디버그 APK만
 # 필요한 Secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (선택: ANDROID_KEY_PASSWORD)
 # 선택 Secrets: PLAY_SERVICE_ACCOUNT_JSON (Play 자동 업로드용 서비스 계정 JSON)
@@ -83,11 +83,10 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         working-directory: app/android
         run: |
-          ./gradlew --no-daemon bundleRelease assembleRelease
+          ./gradlew --no-daemon bundleRelease
           mkdir -p ../out
           cp app/build/outputs/bundle/release/app-release.aab "../out/yahchoo-$BUILD_NUMBER.aab"
-          cp app/build/outputs/apk/release/app-release.apk "../out/yahchoo-$BUILD_NUMBER.apk"
-          echo "::notice title=빌드::버전 1.0.0 ($BUILD_NUMBER) 서명된 AAB·APK 완료. 아래 Artifacts에서 받으세요"
+          echo "::notice title=빌드::버전 1.0.0 ($BUILD_NUMBER) 서명된 AAB 완료. 아래 Artifacts에서 받으세요"
 
       - name: 빌드 (디버그)
         if: steps.key.outputs.signed != 'true'
