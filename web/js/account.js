@@ -61,6 +61,9 @@ export class ApiError extends Error {
   }
 }
 
+/** 서버 요청을 이만큼 기다려도 답이 없으면 끊는다. */
+const API_TIMEOUT_MS = 8000;
+
 /** 서버 요청. 로그인했으면 토큰을 붙인다. body가 있으면 POST. */
 export async function api(path, body) {
   const base = apiBase();
@@ -68,17 +71,28 @@ export async function api(path, body) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // 휴대폰에서 연결이 끊기거나(앱이 뒤로 갔다 오면 낡은 연결이 남기도 함) 응답이 오지 않으면 끝없이 기다리지 않는다.
+  // 기다리던 굴리기 등은 오류로 끝나고, 혼자 하기는 서버 상태로 다시 맞춘다.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
   let res;
+  let data;
   try {
     res = await fetch(`${base}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctrl.signal,
     });
+    data = await res.json().catch(() => ({}));
   } catch {
-    throw new ApiError('서버에 연결할 수 없어요. 인터넷 연결을 확인해 주세요', 0);
+    throw new ApiError(
+      ctrl.signal.aborted ? '서버 응답이 늦어요. 다시 시도해 주세요' : '서버에 연결할 수 없어요. 인터넷 연결을 확인해 주세요',
+      0,
+    );
+  } finally {
+    clearTimeout(timer);
   }
-  const data = await res.json().catch(() => ({}));
   if (res.status === 401 && token) setSession(null, null); // 로그인이 만료됨
   if (!res.ok) throw new ApiError(data.error ?? '잠시 후 다시 시도해 주세요', res.status);
   return data;

@@ -447,7 +447,10 @@ function startRolling(m, { pending = false } = {}) {
   if (pending) {
     // 안전장치: 요청이 서버에 닿지 못했거나(연결 끊김 등) 결과가 오지 않으면 눈이 계속 돌지 않게 멈춘다.
     rollAnim.guard = setTimeout(() => {
-      if (rollAnim.pending) settleRolling();
+      if (!rollAnim.pending) return;
+      settleRolling();
+      // 같이 하기: 굴리기에 답이 없으면 연결이 끊겼을 수 있으니 확인한다(죽은 연결이면 새로 연결).
+      if (ui.kind !== 'solo') room.conn?.checkAlive();
     }, PENDING_MAX_MS);
   }
 
@@ -1393,6 +1396,7 @@ function enterRoom(code, name) {
     },
   });
   room.conn.connect();
+  room.conn.watchResume();
 }
 
 function leaveRoom() {

@@ -73,8 +73,20 @@ export class RoomConnection {
     this.ws = null;
     this.pingTimer = null;
     this.retryTimer = null;
+    this.aliveTimer = null;
+    this.lastHeard = 0;
     /** 관전 중이면 다시 연결할 때도 관전으로 들어간다. */
     this.watching = false;
+  }
+
+  /** 화면이 다시 보이면(앱·탭으로 돌아오면) 연결을 확인한다. */
+  watchResume() {
+    if (this.onVisible) return;
+    this.onVisible = () => {
+      if (document.visibilityState === 'visible') this.checkAlive();
+    };
+    document.addEventListener('visibilitychange', this.onVisible);
+    window.addEventListener('online', this.onVisible);
   }
 
   connect() {
@@ -101,7 +113,9 @@ export class RoomConnection {
       }, 25_000);
     });
     ws.addEventListener('message', (ev) => {
-      if (this.ws !== ws || ev.data === 'pong') return;
+      if (this.ws !== ws) return;
+      this.lastHeard = Date.now();
+      if (ev.data === 'pong') return;
       let msg;
       try {
         msg = JSON.parse(ev.data);
@@ -145,6 +159,48 @@ export class RoomConnection {
       if (ev.code === 4000) return; // 다른 탭에서 같은 자리로 들어옴
       this.scheduleRetry();
     });
+  }
+
+  /**
+   * 연결이 살아 있는지 확인한다. 휴대폰에서 앱이 뒤로 갔다 오면 끊긴 연결이 '열림'으로 남아
+   * 보낸 굴리기가 사라질 수 있다. ping을 보내고 3초 안에 아무 답이 없으면 새로 연결한다.
+   */
+  checkAlive() {
+    const ws = this.ws;
+    if (this.closed || !ws) return;
+    if (ws.readyState !== WebSocket.OPEN) {
+      if (ws.readyState !== WebSocket.CONNECTING) this.reconnectNow();
+      return;
+    }
+    if (this.aliveTimer) return;
+    const asked = Date.now();
+    try {
+      ws.send('ping');
+    } catch {
+      this.reconnectNow();
+      return;
+    }
+    this.aliveTimer = setTimeout(() => {
+      this.aliveTimer = null;
+      if (this.ws === ws && this.lastHeard < asked) this.reconnectNow();
+    }, 3000);
+  }
+
+  /** 지금 연결을 버리고 바로 다시 연결한다. 다시 들어가면 서버 상태로 화면이 맞춰진다. */
+  reconnectNow() {
+    if (this.closed) return;
+    const old = this.ws;
+    this.ws = null;
+    clearInterval(this.pingTimer);
+    clearTimeout(this.retryTimer);
+    try {
+      old?.close(1000);
+    } catch {
+      // 무시
+    }
+    this.attempt = 0;
+    this.onStatus('reconnecting');
+    this.connect();
   }
 
   scheduleRetry() {
@@ -213,6 +269,12 @@ export class RoomConnection {
     this.closed = true;
     clearInterval(this.pingTimer);
     clearTimeout(this.retryTimer);
+    clearTimeout(this.aliveTimer);
+    if (this.onVisible) {
+      document.removeEventListener('visibilitychange', this.onVisible);
+      window.removeEventListener('online', this.onVisible);
+      this.onVisible = null;
+    }
     try {
       this.ws?.close(1000);
     } catch {
