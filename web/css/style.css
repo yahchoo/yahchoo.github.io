@@ -914,3 +914,13 @@ html { touch-action: manipulation; }
 }
 .google-native-btn svg { width: 18px; height: 18px; }
 .double-used { background: rgba(127, 140, 170, 0.16); color: var(--ink-soft); }
+
+/* 메신저 안 브라우저(iPhone): 앱으로 열기 안내 막대 */
+.open-app-bar {
+  position: fixed; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top)); z-index: 60;
+  display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 14px;
+  background: #1b2f5b; color: #fff; font-size: 14px; line-height: 1.35; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+}
+.open-app-bar span { flex: 1; }
+.open-app-go { flex: none; padding: 8px 12px; border-radius: 10px; background: #f5c518; color: #1b2f5b; font-weight: 700; text-decoration: none; }
+.open-app-close { flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #fff; font-size: 16px; }

@@ -99,11 +99,13 @@ jobs:
           if [ -n "$GID" ]; then
             REV="com.googleusercontent.apps.${GID%.apps.googleusercontent.com}"
             PL=ios/App/App/Info.plist
-            /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PL" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PL"
-            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PL"
-            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PL"
-            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $REV" "$PL"
+            # yahchoo:// (카톡에서 앱 열기)는 Info.plist에 있으니 지우지 않고 뒤에 덧붙인다
+            /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$PL" >/dev/null 2>&1 || /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PL"
+            N=$(/usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$PL" | grep -c '^    Dict {' || true)
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:$N dict" "$PL"
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:$N:CFBundleURLSchemes array" "$PL"
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:$N:CFBundleURLSchemes:0 string $REV" "$PL"
+            echo "::notice title=앱 주소::$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes' "$PL" | grep -E 'yahchoo|googleusercontent' | tr -s ' ' | tr '\n' ' ')"
             /usr/libexec/PlistBuddy -c "Delete :GIDClientID" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :GIDClientID string $GID" "$PL"
             echo "::notice title=구글 로그인::앱 구글 로그인 켜짐 ($REV)"

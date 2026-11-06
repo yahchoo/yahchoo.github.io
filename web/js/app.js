@@ -23,6 +23,7 @@ import { GOOGLE_CLIENT_ID } from './config.js';
 import { DOUBLE_DAILY_LIMIT, JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
 import { fillAds, prepareRewarded, rewardedAvailable, startNativeAds, watchRewarded } from './ads.js';
 import { haptic, inApp, native, share } from './native.js';
+import { offerApp } from './openapp.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -2258,6 +2259,8 @@ function boot() {
     enterRoom(active, nickname());
   } else if (/^[A-Z0-9]{4}$/.test(linked)) {
     showOnline(linked);
+    // 카톡 등 메신저 안 브라우저면 앱이 있을 때 앱으로
+    if (!inApp) offerApp(linked);
   } else {
     showHome();
   }
