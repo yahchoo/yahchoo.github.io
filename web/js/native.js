@@ -46,10 +46,10 @@ function hookExternalLinks() {
     const a = ev.target.closest?.('a[href]');
     if (!a) return;
     const url = new URL(a.getAttribute('href'), location.href);
-    const external = url.origin !== location.origin || a.target === '_blank' || url.pathname.endsWith('/privacy.html');
+    const external = url.origin !== location.origin || a.target === '_blank' || /\/(privacy|terms)\.html$/.test(url.pathname);
     if (!external) return;
     ev.preventDefault();
-    // 앱 안에 묶인 개인정보처리방침 대신 항상 최신 웹 페이지를 연다.
+    // 앱 안에 묶인 개인정보처리방침·이용약관 대신 항상 최신 웹 페이지를 연다.
     const target = url.origin === location.origin ? new URL(url.pathname.replace(/^\/+/, '/') + url.hash, 'https://yahchoo.ohsangplay.com') : url;
     native.Browser.open({ url: target.toString() }).catch(() => {});
   });
