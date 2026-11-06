@@ -1436,11 +1436,14 @@ $('copy-invite').addEventListener('click', async () => {
   const link = inviteLink();
   const mode = MODE_LABEL[room.view?.mode] ?? '';
   const text = `오늘도 야추 ${mode} 한 판 같이 해요! 방 코드 ${room.code}`;
-  const data = { title: '오늘도 야추', text, url: link };
+  const message = `${text}\n${link}`;
+  // 링크를 글 안에 넣는다. url을 따로 주면 공유 창의 '복사'나 메모장 같은 곳에는 글만 들어가 링크가 빠진다.
+  // (카카오톡·메시지는 글 속 링크도 알아보고 미리보기를 붙인다)
+  const data = { title: '오늘도 야추', text: message };
   const shared = await share(data);
   if (shared === true || shared === 'cancel') return; // 공유했거나 공유 창을 닫음
   // 공유 창이 없거나 실패(앱 안 브라우저 제한 등)하면 링크 복사로
-  copyInvite(`${text}\n${link}`);
+  copyInvite(message);
 });
 
 /** 기본 공유 창이 없는 곳: 초대 문구와 링크를 복사한다. 붙여 넣으면 링크 미리보기가 붙는다. */
