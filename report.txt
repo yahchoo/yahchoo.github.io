@@ -1,0 +1,76 @@
+### D1 info
+{"uuid":"36451112-4ae0-4a04-bdc2-c14cd3203923","name":"yacht-dice","created_at":"2026-10-20T11:16:54.210Z","version":"production","num_tables":0,"file_size":172032,"jurisdiction":null}
+
+ ⛅️ wrangler 4.151.2
+────────────────────
+┌───────────────────────┬──────────────────────────────────────┐
+│ yacht-dice            │ 36451112-4ae0-4a04-bdc2-c14cd3203923 │
+├───────────────────────┼──────────────────────────────────────┤
+│ name                  │ yacht-dice                           │
+├───────────────────────┼──────────────────────────────────────┤
+│ created_at            │ 2026-10-20T11:16:54.210Z             │
+├───────────────────────┼──────────────────────────────────────┤
+│ num_tables            │ 8                                    │
+├───────────────────────┼──────────────────────────────────────┤
+│ running_in_region     │ APAC                                 │
+├───────────────────────┼──────────────────────────────────────┤
+│ jurisdiction          │ null                                 │
+├───────────────────────┼──────────────────────────────────────┤
+│ database_size         │ 172 kB                               │
+├───────────────────────┼──────────────────────────────────────┤
+│ read_queries_24h      │ 15                                   │
+├───────────────────────┼──────────────────────────────────────┤
+│ write_queries_24h     │ 168                                  │
+├───────────────────────┼──────────────────────────────────────┤
+│ rows_read_24h         │ 365                                  │
+├───────────────────────┼──────────────────────────────────────┤
+│ rows_written_24h      │ 354                                  │
+├───────────────────────┼──────────────────────────────────────┤
+│ read_replication.mode │ disabled                             │
+└───────────────────────┴──────────────────────────────────────┘
+### D1 rows
+tables:
+[{"t":"solo_games","n":64},{"t":"rankings","n":123},{"t":"users","n":7},{"t":"sessions","n":11},{"t":"point_log","n":131}]
+games updated in last 1h / 24h:
+[{"h1":0,"h24":33,"started24":33}]
+rankings this week:
+[{"n":19}]
+rolls per hour (last 24h, by updated_at buckets):
+[{"hour_utc":2,"n":1},{"hour_utc":3,"n":2},{"hour_utc":5,"n":28},{"hour_utc":10,"n":2}]
+plan ranking list:
+[{"id":2,"parent":0,"notused":0,"detail":"CO-ROUTINE r"},{"id":5,"parent":2,"notused":0,"detail":"CO-ROUTINE (subquery-3)"},{"id":9,"parent":5,"notused":203,"detail":"SEARCH rankings USING INDEX rankings_played (played_at>?)"},{"id":30,"parent":5,"notused":0,"detail":"USE TEMP B-TREE FOR ORDER BY"},{"id":54,"parent":2,"notused":196,"detail":"SCAN (subquery-3)"},{"id":113,"parent":0,"notused":196,"detail":"SCAN r"},{"id":128,"parent":0,"notused":0,"detail":"USE TEMP B-TREE FOR ORDER BY"}]
+### Cloudflare analytics (24h)
+db 36451112-4ae0-4a04-bdc2-c14cd3203923
+null
+== worker
+{"dimensions":{"status":"success"},"quantiles":{"cpuTimeP50":1512,"cpuTimeP99":4542,"durationP50":0.024346376,"durationP99":0.038485374,"wallTimeP50":194771,"wallTimeP99":307883},"sum":{"errors":0,"requests":632,"subrequests":3}}
+{"dimensions":{"status":"responseStreamDisconnected"},"quantiles":{"cpuTimeP50":2641,"cpuTimeP99":2641,"durationP50":0.0506855,"durationP99":0.0506855,"wallTimeP50":405484,"wallTimeP99":405484},"sum":{"errors":0,"requests":1,"subrequests":1}}
+== d1 per hour (UTC)
+{"h":"05","r":6,"w":437,"rowsR":1536,"rowsW":902,"p50":0.3,"p90":0.57}
+{"h":"10","r":0,"w":64,"rowsR":122,"rowsW":131,"p50":0.3,"p90":0.58}
+{"h":"18","r":1,"w":1,"rowsR":17,"rowsW":15,"p50":1.49,"p90":1.49}
+{"h":"02","r":1,"w":46,"rowsR":93,"rowsW":92,"p50":0.3,"p90":0.54}
+{"h":"03","r":0,"w":57,"rowsR":110,"rowsW":116,"p50":0.3,"p90":0.59}
+{"h":"04","r":13,"w":0,"rowsR":23,"rowsW":0,"p50":0.4,"p90":0.91}
+== d1 total
+{"readQueries":21,"writeQueries":605,"rowsRead":1901,"rowsWritten":1256}
+== durable objects
+{"quantiles":{"wallTimeP50":41047,"wallTimeP99":929582600},"sum":{"errors":16,"requests":301}}
+### Response times (from GitHub runner)
+health 0.101217
+health 0.077268
+health 0.065813
+start 0.305569
+-- 예전 방식 (sync 없음: 왕복 2번)
+roll 0.531997 server-timing: app;dur=486
+roll 0.620995 server-timing: app;dur=511
+roll 0.564853 server-timing: app;dur=494
+score 0.582975 server-timing: app;dur=496
+-- 새 방식 (sync 함께: 왕복 1번)
+roll 0.361110 server-timing: app;dur=257
+roll 0.343999 server-timing: app;dur=264
+roll 0.284783 server-timing: app;dur=240
+score 0.323729 server-timing: app;dur=246
+rank week 0.309962
+rank all 0.382319
+cf-ray: a59b36755a9a1fdf-IAD
