@@ -1,0 +1,28 @@
+# 응답 지연 점검 (손으로 실행). 새 주소와 예전 주소를 단계별 시간(DNS·연결·TLS·첫 바이트)으로 비교한다.
+name: 응답 지연 점검
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 단계별 시간
+        run: |
+          fmt='dns=%{time_namelookup} conn=%{time_connect} tls=%{time_appconnect} first=%{time_starttransfer} total=%{time_total} code=%{http_code}\n'
+          for host in "https://api.ohsangplay.com/yahchoo" "https://yacht-dice-api.shark-keeper.workers.dev"; do
+            echo "== $host (새 연결 20번)"
+            for i in $(seq 1 20); do curl -s -o /dev/null -w "$fmt" -m 20 "$host/api/health"; done | tee /tmp/r.txt
+            awk '{split($5,a,"="); t=a[2]+0; s+=t; if(t>m)m=t; if(t>1)slow++} END {printf "평균 %.2fs, 최대 %.2fs, 1초 넘은 횟수 %d/20\n", s/NR, m, slow}' /tmp/r.txt | tee /tmp/sum.txt
+            echo "::notice title=$(echo $host | cut -d/ -f3)::$(cat /tmp/sum.txt)"
+            echo "== $host (한 연결로 20번)"
+            urls=$(for i in $(seq 1 20); do printf "%s/api/health " "$host"; done)
+            curl -s -o /dev/null -w "$fmt" -m 60 $urls | awk '{print} {split($5,a,"="); t=a[2]+0; s+=t; if(t>m)m=t} END {printf "연결 재사용: 평균 %.3fs, 최대 %.2fs\n", s/NR, m}' | tail -1 | tee /tmp/sum2.txt
+            echo "::notice title=$(echo $host | cut -d/ -f3) 재사용::$(cat /tmp/sum2.txt)"
+          done
+          echo "== 응답 헤더"
+          curl -s -D - -o /dev/null https://api.ohsangplay.com/yahchoo/api/health | grep -iE 'cf-ray|server|cf-cache|alt-svc'
