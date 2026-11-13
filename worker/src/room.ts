@@ -171,6 +171,18 @@ export class YachtRoom extends DurableObject<Env> {
   private async handleFetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === '/where') {
+      // 이 방(Durable Object)이 실제로 도는 데이터센터
+      let colo: string | null = null;
+      try {
+        const text = await (await fetch('https://www.cloudflare.com/cdn-cgi/trace')).text();
+        colo = /^colo=(\w+)$/m.exec(text)?.[1] ?? null;
+      } catch {
+        // 모르면 null
+      }
+      return Response.json({ colo });
+    }
+
     if (url.pathname === '/init') {
       const code = url.searchParams.get('code') ?? '';
       const mode = url.searchParams.get('mode');

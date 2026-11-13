@@ -60,6 +60,8 @@ go.addEventListener('click', async () => {
     add('그중 서버→DB', `${d2.mid}ms`, grade(d2.mid, 60, 200));
     // 같이 하기: 방을 하나 만들어 연결하고 ping 왕복을 잰다
     const room = await fetch(`${base}/api/rooms`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: '1v1' }) }).then((r) => r.json());
+    const where = await fetch(`${base}/api/rooms/${room.code}/where`).then((r) => r.json()).catch(() => ({}));
+    add('같이 하기 방 위치', where.colo ?? '?', ['SIN', 'HKG', 'NRT', 'KIX', 'ICN', 'TPE'].includes(where.colo) ? 'good' : 'warn');
     const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/api/rooms/${room.code}/ws?name=${encodeURIComponent('점검')}`);
     await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; setTimeout(rej, 8000); });
     const pings = [];

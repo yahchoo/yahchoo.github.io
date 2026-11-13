@@ -67,6 +67,15 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
 }
 
 /** 새 방을 만들고 방 코드를 돌려준다. body: { mode: '1v1' | '1v1v1' | '2v2' } */
+/**
+ * 방(Durable Object)은 처음 만든 사람이 연결된 데이터센터 근처에 생긴다.
+ * 한국 사용자가 회선에 따라 미국(시애틀 등)으로 연결되면 방이 미국에 생겨 같이 하기가 1초 넘게 느려지므로,
+ * 사용자·DB가 있는 아시아에 만들도록 지정한다. (이미 만들어진 방은 원래 자리에 그대로 있다)
+ */
+function roomStub(env: Env, code: string) {
+  return env.ROOMS.get(env.ROOMS.idFromName(code), { locationHint: 'apac' });
+}
+
 async function createRoom(request: Request, env: Env): Promise<Response> {
   let mode: unknown;
   try {
@@ -78,7 +87,7 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
 
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = randomRoomCode();
-    const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
+    const stub = roomStub(env, code);
     const res = await stub.fetch(`https://room/init?code=${code}&mode=${mode}`, { method: 'POST' });
     if (res.status === 201) return json({ code, mode }, 201);
   }
@@ -91,8 +100,14 @@ function connectRoom(request: Request, env: Env, code: string, url: URL): Promis
   if (origin && !isAllowedOrigin(origin, env)) throw new HttpError(403, '허용되지 않은 주소예요');
   if (!isRoomCode(code)) throw new HttpError(400, '방 코드가 올바르지 않아요');
   if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'WebSocket 연결이 필요해요');
-  const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
+  const stub = roomStub(env, code);
   return stub.fetch(`https://room/ws${url.search}`, request);
+}
+
+/** 속도 점검용: 방이 어느 데이터센터에서 돌고 있는지 */
+async function roomWhere(env: Env, code: string): Promise<Response> {
+  if (!isRoomCode(code)) throw new HttpError(400, '방 코드가 올바르지 않아요');
+  return roomStub(env, code).fetch('https://room/where');
 }
 
 /* ---------------------------------------------------------------- 혼자 하기 (랭킹용) */
@@ -450,6 +465,8 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (solo) return getSolo(env, solo[1]);
       const ws = /^GET \/api\/rooms\/([A-Za-z0-9]+)\/ws$/.exec(key);
       if (ws) return connectRoom(request, env, ws[1].toUpperCase(), url);
+      const where = /^GET \/api\/rooms\/([A-Za-z0-9]+)\/where$/.exec(key);
+      if (where) return roomWhere(env, where[1].toUpperCase());
       throw new HttpError(404, '없는 주소예요');
     }
   }

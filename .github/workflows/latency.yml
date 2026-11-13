@@ -31,6 +31,12 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: 같이 하기 방 위치 (미국에서 만들어도 아시아에 생기는지)
+        run: |
+          for i in 1 2 3; do
+            CODE=$(curl -s -X POST -H 'content-type: application/json' -H 'origin: https://yahchoo.ohsangplay.com' -d '{"mode":"1v1"}' https://api.ohsangplay.com/yahchoo/api/rooms | jq -r .code)
+            echo "::notice title=방 위치::방 $CODE → $(curl -s https://api.ohsangplay.com/yahchoo/api/rooms/$CODE/where)"
+          done
       - name: 같이 하기 응답 시간
         run: |
           node tools/mp-latency.mjs https://api.ohsangplay.com/yahchoo 8 | tee /tmp/mp.txt
