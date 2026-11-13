@@ -107,7 +107,9 @@ function connectRoom(request: Request, env: Env, code: string, url: URL): Promis
 /** 속도 점검용: 방이 어느 데이터센터에서 돌고 있는지 */
 async function roomWhere(env: Env, code: string): Promise<Response> {
   if (!isRoomCode(code)) throw new HttpError(400, '방 코드가 올바르지 않아요');
-  return roomStub(env, code).fetch('https://room/where');
+  // 방이 준 응답은 헤더를 바꿀 수 없어서 새로 만든다 (CORS 헤더를 붙여야 함)
+  const res = await roomStub(env, code).fetch('https://room/where');
+  return json(await res.json());
 }
 
 /* ---------------------------------------------------------------- 혼자 하기 (랭킹용) */
