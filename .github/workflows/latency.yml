@@ -53,3 +53,14 @@ jobs:
             body=$(awk -v s="$sec" '/^== /{p=index($0,s)>0; next} p' /tmp/cf.txt | tr '\n' '|' | head -c 3500)
             echo "::notice title=$sec::$body"
           done
+
+      - name: 최근 서버 오류 (error_log)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          cd worker && npm ci --silent
+          npx wrangler d1 execute yacht-dice --remote --json --command "SELECT datetime(at/1000,'unixepoch','+9 hours') AS kst, place, message, substr(stack,1,300) AS stack FROM error_log ORDER BY at DESC LIMIT 15" > /tmp/err.json 2>/dev/null || echo '[]' > /tmp/err.json
+          n=$(jq '.[0].results | length' /tmp/err.json 2>/dev/null || echo 0)
+          echo "::notice title=서버 오류::최근 기록 ${n}건"
+          jq -r '.[0].results[]? | "\(.kst) \(.place): \(.message) | \(.stack | gsub("\n"; " "))"' /tmp/err.json | head -8 | while read -r line; do echo "::notice title=오류::$line"; done

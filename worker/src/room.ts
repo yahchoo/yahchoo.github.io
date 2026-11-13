@@ -164,8 +164,33 @@ export class YachtRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  /**
+   * 예상 못 한 오류를 DB(error_log)에 남긴다. 기록은 방 진행을 막지 않게 따로 한다.
+   */
+  private logError(place: string, err: unknown): void {
+    const e = err instanceof Error ? err : new Error(String(err));
+    console.error(place, e);
+    const now = Date.now();
+    this.ctx.waitUntil(
+      this.env.DB.batch([
+        this.env.DB.prepare('INSERT INTO error_log (at, place, message, stack) VALUES (?, ?, ?, ?)').bind(
+          now,
+          place,
+          e.message.slice(0, 500),
+          (e.stack ?? '').slice(0, 1500),
+        ),
+        this.env.DB.prepare('DELETE FROM error_log WHERE at < ?').bind(now - 7 * 86_400_000),
+      ]).then(() => undefined, () => undefined),
+    );
+  }
+
   async fetch(request: Request): Promise<Response> {
-    return this.serial(() => this.handleFetch(request));
+    try {
+      return await this.serial(() => this.handleFetch(request));
+    } catch (err) {
+      this.logError(`room.fetch ${new URL(request.url).pathname}`, err);
+      throw err;
+    }
   }
 
   private async handleFetch(request: Request): Promise<Response> {
@@ -264,7 +289,11 @@ export class YachtRoom extends DurableObject<Env> {
     // 관전자는 방 상태를 바꾸지 않으니(보기·응원·야유) 줄을 서지 않는다.
     // 야유의 포인트 차감 같은 DB 작업이 게임 진행을 막지 않게 한다.
     if (!att.playerId) {
-      await this.watcherMessage(ws, att, message);
+      try {
+        await this.watcherMessage(ws, att, message);
+      } catch (err) {
+        this.logError('room.watcher', err);
+      }
       return;
     }
     let data: Record<string, unknown>;
@@ -283,7 +312,19 @@ export class YachtRoom extends DurableObject<Env> {
         return;
       }
     }
-    await this.serial(() => this.handleMessage(ws, att.playerId as string, data, user));
+    try {
+      await this.serial(() => this.handleMessage(ws, att.playerId as string, data, user));
+    } catch (err) {
+      // 오류가 나도 방은 계속 돌게 하고, 보낸 사람에게는 최신 상태를 다시 보내 화면이 멈추지 않게 한다.
+      this.logError(`room.message ${String(data.type)}`, err);
+      YachtRoom.sendError(ws, '잠깐 문제가 생겼어요. 다시 시도해 주세요');
+      try {
+        const state = await this.load();
+        if (state) this.broadcast(state);
+      } catch {
+        // 무시
+      }
+    }
   }
 
   private async handleMessage(
@@ -460,7 +501,11 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number): Promise<void> {
-    await this.serial(() => this.onSocketGone(ws));
+    try {
+      await this.serial(() => this.onSocketGone(ws));
+    } catch (err) {
+      this.logError('room.close', err);
+    }
     try {
       ws.close(code === 1005 ? 1000 : code, 'closed');
     } catch {
@@ -469,11 +514,20 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    await this.serial(() => this.onSocketGone(ws));
+    try {
+      await this.serial(() => this.onSocketGone(ws));
+    } catch (err) {
+      this.logError('room.wserror', err);
+    }
   }
 
   async alarm(): Promise<void> {
-    await this.serial(() => this.handleAlarm());
+    try {
+      await this.serial(() => this.handleAlarm());
+    } catch (err) {
+      this.logError('room.alarm', err);
+      throw err;
+    }
   }
 
   private async handleAlarm(): Promise<void> {

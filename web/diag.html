@@ -25,7 +25,7 @@
 <body>
 <main>
   <h1>오늘도 야추 속도 점검</h1>
-  <p>버튼을 누르고 10초쯤 기다린 뒤, 결과 화면을 캡처해서 보내 주세요.</p>
+  <p>버튼을 누르고 20초쯤 기다린 뒤, 결과 화면을 캡처해서 보내 주세요.</p>
   <button id="go" type="button">점검 시작</button>
   <div class="card" id="out" hidden></div>
 </main>
@@ -40,6 +40,47 @@ const add = (k, v, c) => { rows.push([k, v, c]); show(); };
 const grade = (ms, ok, warn) => (ms <= ok ? 'good' : ms <= warn ? 'warn' : 'bad');
 const stat = (arr) => { const s = [...arr].sort((a, b) => a - b); return { mid: s[Math.floor(s.length / 2)], max: s[s.length - 1] }; };
 async function timed(url) { const t = performance.now(); const r = await fetch(url, { cache: 'no-store' }); const j = await r.json(); return { ms: Math.round(performance.now() - t), j }; }
+
+/** 같이 하기를 실제로 몇 번 굴려 보고, 굴린 뒤 결과가 오기까지 걸린 시간 목록을 돌려준다. */
+async function playTest(base) {
+  const room = await fetch(`${base}/api/rooms`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: '1v1' }) }).then((r) => r.json());
+  const join = (name) => new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/api/rooms/${room.code}/ws?name=${encodeURIComponent(name)}`);
+    const c = { ws, state: null, waiters: [] };
+    ws.onmessage = (ev) => {
+      if (ev.data === 'pong') return;
+      const m = JSON.parse(ev.data);
+      if (m.type === 'welcome') resolve(c);
+      if (m.type === 'state') { c.state = m; c.waiters.splice(0).forEach((w) => w(m)); }
+    };
+    ws.onerror = reject;
+    setTimeout(() => reject(new Error('같이 하기 연결 시간 초과')), 8000);
+  });
+  const next = (c, ms = 8000) => new Promise((r) => { c.waiters.push(r); setTimeout(() => r(null), ms); });
+  const a = await join('점검1');
+  const b = await join('점검2');
+  await new Promise((r) => setTimeout(r, 300));
+  a.ws.send(JSON.stringify({ type: 'start' }));
+  await next(a);
+  await new Promise((r) => setTimeout(r, 300));
+  const times = [];
+  const cats = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'];
+  for (let i = 0; i < 6; i++) {
+    const turn = a.state.game.turn;
+    const me = a.state.you === turn ? a : b;
+    const other = me === a ? b : a;
+    let t = performance.now();
+    me.ws.send(JSON.stringify({ type: 'roll' }));
+    const got = await next(me);
+    times.push(got ? Math.round(performance.now() - t) : 8000);
+    me.ws.send(JSON.stringify({ type: 'score', category: cats[Math.floor(i / 2)] }));
+    await Promise.all([next(me), next(other)]);
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  a.ws.send(JSON.stringify({ type: 'leave' })); b.ws.send(JSON.stringify({ type: 'leave' }));
+  a.ws.close(); b.ws.close();
+  return times;
+}
 
 go.addEventListener('click', async () => {
   go.disabled = true; rows.length = 0;
@@ -73,7 +114,12 @@ go.addEventListener('click', async () => {
     ws.send(JSON.stringify({ type: 'leave' })); ws.close();
     const p = stat(pings);
     add('같이 하기 왕복 (보통/최대)', `${p.mid}ms / ${p.max}ms`, grade(p.mid, 120, 300));
-    const worst = Math.max(n.mid > 300 ? 2 : n.mid > 120 ? 1 : 0, d.mid > 600 ? 2 : d.mid > 250 ? 1 : 0, p.mid > 300 ? 2 : p.mid > 120 ? 1 : 0);
+    // 실제 게임: 방을 새로 만들고 두 자리로 들어가 번갈아 굴리고 적으며 결과가 오기까지 잰다
+    const game = await playTest(base);
+    const g = stat(game);
+    add('같이 하기 실제 굴리기 (보통/최대)', `${g.mid}ms / ${g.max}ms`, grade(g.mid, 200, 500));
+    if (g.max > 1500) add('1.5초 넘게 걸린 굴리기', `${game.filter((x) => x > 1500).length}번 / ${game.length}번`, 'bad');
+    const worst = Math.max(n.mid > 300 ? 2 : n.mid > 120 ? 1 : 0, d.mid > 600 ? 2 : d.mid > 250 ? 1 : 0, p.mid > 300 ? 2 : p.mid > 120 ? 1 : 0, g.max > 1500 ? 2 : g.mid > 200 ? 1 : 0);
     add('결과', ['빠름', '조금 느림', '느림'][worst], ['good', 'warn', 'bad'][worst]);
   } catch (e) {
     add('오류', String(e?.message ?? e), 'bad');
