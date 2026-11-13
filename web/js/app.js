@@ -2325,3 +2325,23 @@ function onAndroidBack() {
   showHome();
 }
 if (native?.platform === 'android') native.App.addListener('backButton', onAndroidBack);
+
+/* ---------------------------------------------------------------- 서버 연결 데워 두기 */
+// 혼자 하기는 굴릴 때마다 서버에 묻는다. 생각하는 동안 연결이 끊기면 다음 굴리기 때 다시 연결하느라
+// (해외로 연결되는 회선에서는 1~3초) 주사위가 오래 돈다. 게임 화면이 보이는 동안 20초마다 가볍게 두드려 연결을 유지한다.
+const WARM_MS = 20_000;
+let warmTimer = null;
+function warmServer() {
+  const base = apiBase();
+  if (!base || document.hidden || $('game').hidden || ui.kind !== 'solo') return;
+  fetch(`${base}/api/health`, { cache: 'no-store' }).catch(() => {});
+}
+function keepWarm() {
+  clearInterval(warmTimer);
+  warmTimer = setInterval(warmServer, WARM_MS);
+}
+document.addEventListener('visibilitychange', () => {
+  // 앱·탭으로 돌아오면 바로 한 번 연결해 둔다
+  if (!document.hidden) warmServer();
+});
+keepWarm();
