@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>속도 점검 · 오늘도 야추</title>
+<style>
+  :root { --bg: #f4f6fb; --card: #fff; --ink: #1b2f5b; --soft: #5b6b8c; --good: #1a8f4c; --warn: #c27a00; --bad: #c0392b; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1a33; --card: #18264a; --ink: #eef2fb; --soft: #a8b5d4; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { color: var(--soft); margin: 0 0 16px; }
+  button { width: 100%; padding: 14px; border: 0; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: 17px; font-weight: 700; }
+  button:disabled { opacity: .5; }
+  .card { background: var(--card); border-radius: 14px; padding: 14px 16px; margin-top: 12px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(127,140,170,.2); }
+  .row:last-child { border-bottom: 0; }
+  .row b { text-align: right; }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  #verdict { font-weight: 700; font-size: 17px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>오늘도 야추 속도 점검</h1>
+  <p>버튼을 누르고 10초쯤 기다린 뒤, 결과 화면을 캡처해서 보내 주세요.</p>
+  <button id="go" type="button">점검 시작</button>
+  <div class="card" id="out" hidden></div>
+</main>
+<script type="module">
+import { apiBase } from './js/net.js';
+const base = apiBase() || 'https://api.ohsangplay.com/yahchoo';
+const out = document.getElementById('out');
+const go = document.getElementById('go');
+const rows = [];
+const show = () => { out.hidden = false; out.innerHTML = rows.map(([k, v, c]) => `<div class="row"><span>${k}</span><b class="${c ?? ''}">${v}</b></div>`).join(''); };
+const add = (k, v, c) => { rows.push([k, v, c]); show(); };
+const grade = (ms, ok, warn) => (ms <= ok ? 'good' : ms <= warn ? 'warn' : 'bad');
+const stat = (arr) => { const s = [...arr].sort((a, b) => a - b); return { mid: s[Math.floor(s.length / 2)], max: s[s.length - 1] }; };
+async function timed(url) { const t = performance.now(); const r = await fetch(url, { cache: 'no-store' }); const j = await r.json(); return { ms: Math.round(performance.now() - t), j }; }
+
+go.addEventListener('click', async () => {
+  go.disabled = true; rows.length = 0;
+  add('기기', /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? '안드로이드' : 'PC');
+  add('점검 시각', new Date().toLocaleString('ko-KR'));
+  try {
+    const first = await timed(`${base}/api/health`);
+    add('연결된 데이터센터', `${first.j.colo ?? '?'} (${first.j.country ?? '?'})`, first.j.colo === 'ICN' ? 'good' : 'warn');
+    add('첫 연결', `${first.ms}ms`, grade(first.ms, 400, 1200));
+    const net = [];
+    for (let i = 0; i < 6; i++) net.push((await timed(`${base}/api/health`)).ms);
+    const n = stat(net);
+    add('서버 왕복 (보통/최대)', `${n.mid}ms / ${n.max}ms`, grade(n.mid, 120, 300));
+    const db = []; const dbOnly = [];
+    for (let i = 0; i < 5; i++) { const r = await timed(`${base}/api/health?db=1`); db.push(r.ms); dbOnly.push(r.j.dbMs ?? 0); }
+    const d = stat(db); const d2 = stat(dbOnly);
+    add('DB 포함 왕복 (혼자 하기 굴리기와 비슷)', `${d.mid}ms / ${d.max}ms`, grade(d.mid, 250, 600));
+    add('그중 서버→DB', `${d2.mid}ms`, grade(d2.mid, 60, 200));
+    // 같이 하기: 방을 하나 만들어 연결하고 ping 왕복을 잰다
+    const room = await fetch(`${base}/api/rooms`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: '1v1' }) }).then((r) => r.json());
+    const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/api/rooms/${room.code}/ws?name=${encodeURIComponent('점검')}`);
+    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; setTimeout(rej, 8000); });
+    const pings = [];
+    for (let i = 0; i < 6; i++) {
+      const t = performance.now();
+      await new Promise((res) => { const on = (ev) => { if (ev.data === 'pong') { ws.removeEventListener('message', on); res(); } }; ws.addEventListener('message', on); ws.send('ping'); setTimeout(res, 5000); });
+      pings.push(Math.round(performance.now() - t));
+    }
+    ws.send(JSON.stringify({ type: 'leave' })); ws.close();
+    const p = stat(pings);
+    add('같이 하기 왕복 (보통/최대)', `${p.mid}ms / ${p.max}ms`, grade(p.mid, 120, 300));
+    const worst = Math.max(n.mid > 300 ? 2 : n.mid > 120 ? 1 : 0, d.mid > 600 ? 2 : d.mid > 250 ? 1 : 0, p.mid > 300 ? 2 : p.mid > 120 ? 1 : 0);
+    add('결과', ['빠름', '조금 느림', '느림'][worst], ['good', 'warn', 'bad'][worst]);
+  } catch (e) {
+    add('오류', String(e?.message ?? e), 'bad');
+  }
+  go.disabled = false; go.textContent = '다시 점검';
+});
+</script>
+</body>
+</html>

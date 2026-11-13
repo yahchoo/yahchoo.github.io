@@ -418,8 +418,17 @@ async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const key = `${request.method} ${url.pathname.replace(/\/+$/, '')}`;
   switch (key) {
-    case 'GET /api/health':
-      return json({ ok: true });
+    case 'GET /api/health': {
+      // 속도 점검용: 어느 Cloudflare 데이터센터(colo)에서 처리했는지, ?db=1이면 DB까지 걸린 시간도
+      const cf = (request as Request & { cf?: { colo?: string; country?: string } }).cf;
+      const out: Record<string, unknown> = { ok: true, colo: cf?.colo ?? null, country: cf?.country ?? null };
+      if (url.searchParams.get('db') === '1') {
+        const t = Date.now();
+        await env.DB.prepare('SELECT 1').first();
+        out.dbMs = Date.now() - t;
+      }
+      return json(out);
+    }
     case 'POST /api/rooms':
       return createRoom(request, env);
     case 'POST /api/solo/start':
