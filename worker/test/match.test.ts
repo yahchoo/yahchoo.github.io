@@ -460,3 +460,25 @@ describe('관전 응원', () => {
     expect(cheerTarget(s, 2)).toBeNull();
   });
 });
+
+describe('굴릴 때 고정 상태 함께 보내기', () => {
+  it('화면의 고정 상태로 굴린다 (고정 요청이 늦게 닿아도)', () => {
+    const { s } = room('1v1', 2);
+    start(s, 'p0', T0, first);
+    const id = current(s);
+    roll(s, id, T0 + 10, () => 0.99); // 6,6,6,6,6
+    // 서버에는 아직 고정이 안 닿았지만, 굴릴 때 0·1번을 고정해서 보냄
+    roll(s, id, T0 + 20, first, [true, true, false, false, false]);
+    expect(s.game!.dice).toEqual([6, 6, 1, 1, 1]);
+    expect(s.game!.held).toEqual([true, true, false, false, false]);
+  });
+  it('첫 굴리기는 고정을 무시하고, 이상한 값은 무시한다', () => {
+    const { s } = room('1v1', 2);
+    start(s, 'p0', T0, first);
+    const id = current(s);
+    roll(s, id, T0 + 10, () => 0.99, [true, true, true, true, true]);
+    expect(s.game!.dice).toEqual([6, 6, 6, 6, 6]);
+    roll(s, id, T0 + 20, first, ['x', 1]);
+    expect(s.game!.dice).toEqual([1, 1, 1, 1, 1]);
+  });
+});

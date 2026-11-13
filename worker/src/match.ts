@@ -321,11 +321,18 @@ export function hold(state: RoomState, playerId: string, index: unknown, held: u
   state.updatedAt = now;
 }
 
-export function roll(state: RoomState, playerId: string, now: number, rand: () => number): void {
+/**
+ * 굴리기. held(주사위 5개의 고정 여부)를 함께 보내면 그 고정 상태로 굴린다.
+ * 화면에서 고정한 뒤 바로 굴리면 고정 요청보다 먼저 판단되는 일이 없도록, 굴릴 때의 화면 상태를 그대로 쓴다.
+ */
+export function roll(state: RoomState, playerId: string, now: number, rand: () => number, held?: unknown): void {
   const game = currentGame(state, playerId);
   if (game.rollsLeft <= 0) throw new RoomError('이번 차례에는 더 굴릴 수 없어요');
   const first = game.rollsLeft === ROLLS_PER_TURN;
   if (first) game.held = Array(DICE_COUNT).fill(false);
+  else if (Array.isArray(held) && held.length === DICE_COUNT && held.every((h) => typeof h === 'boolean')) {
+    game.held = [...held];
+  }
   game.dice = rollDice(game.dice, game.held, rand);
   game.rollsLeft -= 1;
   game.rollSeq += 1;

@@ -204,6 +204,8 @@ const ui = {
   kind: null,
   armed: null,
   lastRollSeq: null,
+  /** 같이 하기: 내가 누른 고정 상태 { key, held } (서버 답이 오기 전에도 화면에 유지) */
+  heldLocal: null,
   lastMatch: null,
   lastScoredKey: null,
   lastTurnKey: null,
@@ -282,12 +284,13 @@ function onRoll() {
     soloAction(() => solo.roll());
   } else {
     startRolling({ ...ui.model, rollsLeft: ui.model.rollsLeft - 1 }, { pending: true });
-    if (!room.conn?.send({ type: 'roll' })) stopRolling();
+    if (!room.conn?.send({ type: 'roll', held: [...ui.model.held] })) stopRolling();
   }
 }
 
 function onHold(i) {
-  if (!ui.model?.canHold || isRolling()) return;
+  // 결과를 기다리는 중에는 눈을 모르니 막고, 결과가 온 뒤 주사위가 멈추는 중에는 바로 받는다.
+  if (!ui.model?.canHold || rollAnim.pending) return;
   ui.armed = null;
   if (ui.kind === 'solo') {
     solo.toggleHold(i);
@@ -296,7 +299,9 @@ function onHold(i) {
     // 바로 보여주고, 서버 상태가 오면 그걸로 맞춘다.
     const held = !ui.model.held[i];
     ui.model.held[i] = held;
+    ui.heldLocal = { key: ui.model.heldKey, held: [...ui.model.held] };
     diceButtons[i].classList.toggle('held', held);
+    diceButtons[i].setAttribute('aria-pressed', String(held));
     room.conn?.send({ type: 'hold', index: i, held });
   }
 }
@@ -361,7 +366,7 @@ function renderGame(m) {
   diceButtons.forEach((b, i) => {
     if (!rollAnim.dice.has(i)) paintDie(b, m.dice[i] ?? 0);
     b.classList.toggle('held', !!m.held[i] && m.rollsLeft < ROLLS_PER_TURN);
-    b.disabled = !m.canHold || rolling;
+    b.disabled = !m.canHold || rollAnim.pending;
     b.setAttribute('aria-pressed', String(!!m.held[i]));
   });
 
@@ -1603,7 +1608,9 @@ function onRoomState(view) {
     turnMs: view.players[g.turn]?.connected === false ? 10_000 : 60_000,
     now: () => room.conn?.now() ?? Date.now(),
     dice: g.dice,
-    held: g.held,
+    // 내가 방금 누른 고정은 서버 답을 기다리지 않고 그대로 보여 준다 (같은 판·차례·굴림 안에서만).
+    held: ui.heldLocal?.key === `${view.match}:${g.turn}:${g.rollSeq}` ? [...ui.heldLocal.held] : g.held,
+    heldKey: `${view.match}:${g.turn}:${g.rollSeq}`,
     rollsLeft: g.rollsLeft,
     rollSeq: g.rollSeq,
     canRoll: myTurn && g.rollsLeft > 0,

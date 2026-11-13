@@ -83,26 +83,34 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   /** 끝난 게임이면 포인트를 한 번만 지급한다. (같은 판으로 두 번 받지 않게 기록으로도 막는다) */
-  private async settleRewards(state: RoomState): Promise<void> {
+  /**
+   * 끝난 판의 포인트를 정한다. 지급(DB)은 저장한 뒤 따로 해서, DB가 느려도 방 진행을 막지 않는다.
+   * 같은 판(ref)은 한 번만 지급되므로(grantPoints가 중복을 막음) 다시 시도해도 안전하다.
+   */
+  private takeRewards(state: RoomState): (() => Promise<void>) | null {
     const game = state.game;
-    if (state.phase !== 'finished' || !game || game.rewardsGranted) return;
+    if (state.phase !== 'finished' || !game || game.rewardsGranted) return null;
     const rewards = decideRewards(state);
     const ref = rewardRef(state);
-    for (const r of rewards) {
-      try {
-        // 점수 포인트와 등수 보너스를 따로 기록한다. (앱의 '광고 보고 2배'는 점수 포인트만)
-        await grantPoints(this.env, r.userId, r.score, 'match', ref);
-        await grantPoints(this.env, r.userId, r.bonus, 'match-bonus', ref);
-      } catch (err) {
-        console.error('포인트 지급 실패', err);
-      }
-    }
     game.rewardsGranted = true;
+    if (rewards.length === 0) return null;
+    return async () => {
+      for (const r of rewards) {
+        try {
+          // 점수 포인트와 등수 보너스를 따로 기록한다. (앱의 '광고 보고 2배'는 점수 포인트만)
+          await grantPoints(this.env, r.userId, r.score, 'match', ref);
+          await grantPoints(this.env, r.userId, r.bonus, 'match-bonus', ref);
+        } catch (err) {
+          console.error('포인트 지급 실패', err);
+        }
+      }
+    };
   }
 
   private async save(state: RoomState): Promise<void> {
-    await this.settleRewards(state);
+    const grant = this.takeRewards(state);
     await this.ctx.storage.put('state', state);
+    if (grant) this.ctx.waitUntil(grant());
     // 게임 중에는 차례 마감 시각에, 그 외에는 정리 여부를 보러 깨운다.
     const deadline = state.phase === 'playing' ? state.game?.turnDeadline ?? null : null;
     const next = deadline ?? Math.max(state.updatedAt + IDLE_MS, Date.now() + 60_000);
@@ -239,25 +247,39 @@ export class YachtRoom extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    await this.serial(() => this.handleMessage(ws, message));
-  }
-
-  private async handleMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
     if (!att || typeof message !== 'string') return;
-    // 관전자는 보기와 응원만 한다.
+    // 관전자는 방 상태를 바꾸지 않으니(보기·응원·야유) 줄을 서지 않는다.
+    // 야유의 포인트 차감 같은 DB 작업이 게임 진행을 막지 않게 한다.
     if (!att.playerId) {
       await this.watcherMessage(ws, att, message);
       return;
     }
-    const playerId = att.playerId;
-
     let data: Record<string, unknown>;
     try {
       data = JSON.parse(message);
     } catch {
       return;
     }
+    // 로그인 확인(DB)은 줄 밖에서 먼저 한다. 줄 안에서 DB를 기다리면 그동안 방 전체(굴리기 등)가 멈춘다.
+    let user: Awaited<ReturnType<typeof userFromToken>> | undefined;
+    if (data.type === 'auth') {
+      if (typeof data.token !== 'string' || !/^[A-Za-z0-9_-]{20,100}$/.test(data.token)) return;
+      user = await userFromToken(this.env, data.token);
+      if (!user) {
+        YachtRoom.sendError(ws, '로그인이 만료됐어요. 이번 판은 포인트 없이 진행돼요');
+        return;
+      }
+    }
+    await this.serial(() => this.handleMessage(ws, att.playerId as string, data, user));
+  }
+
+  private async handleMessage(
+    ws: WebSocket,
+    playerId: string,
+    data: Record<string, unknown>,
+    user: Awaited<ReturnType<typeof userFromToken>> | undefined,
+  ): Promise<void> {
 
     const state = await this.load();
     if (!state) {
@@ -272,13 +294,8 @@ export class YachtRoom extends DurableObject<Env> {
       expireTurn(state, now, secureRandom);
       switch (data.type) {
         case 'auth': {
-          // 로그인한 사람은 들어온 뒤 로그인 토큰을 보내 계정을 연결한다.
-          if (typeof data.token !== 'string' || !/^[A-Za-z0-9_-]{20,100}$/.test(data.token)) return;
-          const user = await userFromToken(this.env, data.token);
-          if (!user) {
-            YachtRoom.sendError(ws, '로그인이 만료됐어요. 이번 판은 포인트 없이 진행돼요');
-            return;
-          }
+          // 로그인한 사람은 들어온 뒤 로그인 토큰을 보내 계정을 연결한다. (토큰 확인은 줄 밖에서 끝냄)
+          if (!user) return;
           attachAccount(state, playerId, user.id, parseAvatar(user.avatar), now);
           break;
         }
@@ -292,7 +309,8 @@ export class YachtRoom extends DurableObject<Env> {
           hold(state, playerId, data.index, data.held, now);
           break;
         case 'roll':
-          roll(state, playerId, now, secureRandom);
+          // 화면에 보이는 고정 상태로 굴린다 (고정 요청이 늦게 닿아도 어긋나지 않게).
+          roll(state, playerId, now, secureRandom, data.held);
           break;
         case 'score':
           score(state, playerId, data.category, now);
