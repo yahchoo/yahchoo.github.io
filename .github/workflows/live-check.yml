@@ -52,6 +52,16 @@ jobs:
           done
           $ok
 
+      - name: 앱 링크 확인 파일
+        run: |
+          for f in assetlinks.json apple-app-site-association; do
+            code=$(curl -s -o /tmp/f -w '%{http_code} %{content_type}' "https://yahchoo.ohsangplay.com/.well-known/$f")
+            echo "::notice title=$f::$code $(head -c 600 /tmp/f | tr -d '\n ')"
+          done
+          # 구글 공식 검사기
+          r=$(curl -s "https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://yahchoo.ohsangplay.com&relation=delegate_permission/common.handle_all_urls")
+          echo "::notice title=구글 검사기::$(echo "$r" | jq -c '{n: (.statements|length), debug: .debugString[0:300]}')"
+
       - name: 인증서·DNS
         run: |
           for h in api.ohsangplay.com yacht-dice-api.shark-keeper.workers.dev; do
