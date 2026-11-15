@@ -190,7 +190,9 @@ jobs:
           ADSENSE_SLOTS: ${{ vars.ADSENSE_SLOTS || '{}' }}
           # 링크로 앱 열기: iOS는 팀 ID, 안드로이드는 서명 인증서 SHA-256(쉼표로 여러 개: 업로드 키, Play 앱 서명 키)
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
+          # 안드로이드 앱 서명 인증서 SHA-256 (Play 앱 서명 키·이전 앱 서명 키·업로드 키). 공개값이라 여기 둔다.
+          # 저장소 변수 ANDROID_CERT_SHA256이 있으면 그 값을 쓴다.
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 || '0B:8B:C3:A8:55:15:77:BF:41:91:3D:B5:52:B0:D0:6B:5E:28:69:B5:EF:0A:FC:A1:BE:2E:9A:DD:53:E4:9E:AB,EE:1E:F7:D8:5E:1D:4A:E6:06:54:E0:E8:C2:B3:41:C2:21:A0:CE:44:B8:10:97:04:EF:31:3D:6E:EA:8A:BA:DE,9B:0F:89:7E:CE:F0:28:26:57:C3:32:B6:27:44:7F:06:A6:8F:41:C4:6A:53:A5:8C:30:24:F0:A8:79:3E:87:96,58:95:54:12:BB:D1:BB:18:6A:C9:2A:A1:4D:CC:CE:1F:2F:4D:48:1E:68:F0:C1:F4:47:4E:22:92:DC:C4:F5:6B' }}
         run: |
           mkdir -p _site
           cp -r web/. _site/
