@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { grantPoints, spendPoints, userFromToken } from './account';
-import { JEERS } from '../../web/js/points.js';
+import { ITEM_BUY_COST, JEERS } from '../../web/js/points.js';
 import { parseAvatar } from '../../web/js/avatar.js';
 import {
   RoomError,
@@ -11,6 +11,10 @@ import {
   cleanName,
   cheerTarget,
   createRoom,
+  buyItem,
+  canBuyItem,
+  setItems,
+  useItem,
   decideRewards,
   disconnect,
   MAX_WATCHERS,
@@ -213,7 +217,7 @@ export class YachtRoom extends DurableObject<Env> {
       const mode = url.searchParams.get('mode');
       if (!isMode(mode)) return new Response('bad mode', { status: 400 });
       if (await this.load()) return new Response('exists', { status: 409 });
-      await this.save(createRoom(code, mode, Date.now()));
+      await this.save(createRoom(code, mode, Date.now(), url.searchParams.get('items') === '1'));
       return new Response('created', { status: 201 });
     }
 
@@ -312,6 +316,16 @@ export class YachtRoom extends DurableObject<Env> {
         return;
       }
     }
+    if (data.type === 'buy') {
+      // 포인트 차감(DB)은 줄 밖에서 하고, 아이템 주기만 줄 안에서 한다.
+      try {
+        await this.buyItemFor(ws, att.playerId as string, data.item);
+      } catch (err) {
+        this.logError('room.buy', err);
+        YachtRoom.sendError(ws, '잠깐 문제가 생겼어요. 다시 시도해 주세요');
+      }
+      return;
+    }
     try {
       await this.serial(() => this.handleMessage(ws, att.playerId as string, data, user));
     } catch (err) {
@@ -324,6 +338,59 @@ export class YachtRoom extends DurableObject<Env> {
       } catch {
         // 무시
       }
+    }
+  }
+
+  /** 이 방에서 지금 사고 있는 것 (같은 아이템을 두 번 눌러 두 번 빠지지 않게) */
+  private buying = new Set<string>();
+
+  /** 아이템전: 다 쓴 아이템을 포인트로 한 번 더 산다. 차감 뒤 줄 수 없게 됐으면 돌려준다. */
+  private async buyItemFor(ws: WebSocket, playerId: string, item: unknown): Promise<void> {
+    const key = `${playerId}:${String(item)}`;
+    if (this.buying.has(key)) return;
+    this.buying.add(key);
+    try {
+      const state = await this.load();
+      if (!state) return;
+      let userId: string;
+      try {
+        userId = canBuyItem(state, playerId, item);
+      } catch (err) {
+        if (err instanceof RoomError) {
+          YachtRoom.sendError(ws, err.message);
+          return;
+        }
+        throw err;
+      }
+      const ok = await spendPoints(this.env, userId, ITEM_BUY_COST, 'item');
+      if (!ok) {
+        YachtRoom.sendError(ws, `포인트가 부족해요. 아이템은 ${ITEM_BUY_COST}포인트예요`);
+        return;
+      }
+      let granted = false;
+      await this.serial(async () => {
+        const s = await this.load();
+        if (!s) return;
+        try {
+          buyItem(s, playerId, item, Date.now());
+          granted = true;
+        } catch (err) {
+          if (!(err instanceof RoomError)) throw err;
+          YachtRoom.sendError(ws, err.message);
+          return;
+        }
+        await this.save(s);
+        this.broadcast(s);
+      });
+      if (!granted) await grantPoints(this.env, userId, ITEM_BUY_COST, 'item_refund', crypto.randomUUID());
+      const row = await this.env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(userId).first<{ points: number }>();
+      try {
+        ws.send(JSON.stringify({ type: 'balance', points: row?.points ?? 0 }));
+      } catch {
+        // 무시
+      }
+    } finally {
+      this.buying.delete(key);
     }
   }
 
@@ -367,6 +434,12 @@ export class YachtRoom extends DurableObject<Env> {
           break;
         case 'score':
           score(state, playerId, data.category, now);
+          break;
+        case 'item':
+          useItem(state, playerId, data.item, data.item === 'flip' ? data.index : data.category, now);
+          break;
+        case 'items':
+          setItems(state, playerId, data.on, now);
           break;
         case 'rematch':
           rematch(state, playerId, now);

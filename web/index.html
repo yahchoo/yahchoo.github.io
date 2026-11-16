@@ -75,6 +75,7 @@
 
       <section class="block">
         <h3>방 만들기</h3>
+        <p class="pick-label">인원</p>
         <div class="modes" role="radiogroup" aria-label="게임 방식">
           <button class="mode" role="radio" data-mode="1v1" aria-checked="true">
             <span class="mode-flags"><i class="pen c0"></i><i class="pen c1"></i></span>
@@ -87,6 +88,16 @@
           <button class="mode" role="radio" data-mode="2v2" aria-checked="false">
             <span class="mode-flags"><i class="pen t0"></i><i class="pen t0"></i><i class="pen t1"></i><i class="pen t1"></i></span>
             <b>2 : 2</b><small>네 명, 팀전</small>
+          </button>
+        </div>
+        <p class="pick-label">규칙</p>
+        <div class="rules-pick" role="radiogroup" aria-label="규칙">
+          <button class="rule-opt" role="radio" data-items="0" aria-checked="true">
+            <b>기본전</b><small>원래 야추 규칙</small>
+          </button>
+          <button class="rule-opt" role="radio" data-items="1" aria-checked="false">
+            <span class="rule-icons" data-item-icons></span>
+            <b>아이템전</b><small>아이템 3개로 역전을 노려요</small>
           </button>
         </div>
         <button class="btn btn-primary wide" id="create-room">방 만들기</button>
@@ -174,6 +185,7 @@
           <span id="invite-label">친구 초대하기</span>
         </button>
       </div>
+      <div class="lobby-rule" id="lobby-rule" hidden></div>
       <div id="lobby-seats" class="seats"></div>
       <div class="watch-list" id="lobby-watchers" hidden></div>
       <p class="lobby-note" id="lobby-note"></p>
@@ -211,6 +223,7 @@
           </button>
           <div class="cheer-row" id="cheer-row" hidden></div>
         </div>
+        <div class="item-bar" id="item-bar" role="group" aria-label="아이템" hidden></div>
         <p class="toast" id="toast" role="status" aria-live="polite"></p>
         <!-- PC: 주사위 아래 빈 공간 (굴리기 버튼과 충분히 띄운다) -->
         <aside class="ad-slot ad-desktop" data-ad="game" aria-label="광고" hidden><span class="ad-label">광고</span></aside>
@@ -248,6 +261,9 @@
       <h3>같이 하기</h3>
       <p>한 차례는 60초예요. 시간이 지나면 점수가 가장 높은 빈 칸에 대신 적어요. 연결이 끊긴 사람의 차례는 10초 뒤 대신 진행해요.</p>
       <p>2:2는 각자 자기 점수판을 채우고 같은 팀 두 사람의 총점을 더해 겨뤄요. 게임 중에 나가면 기권이에요.</p>
+      <h3>아이템전</h3>
+      <p>방을 만들 때 아이템전을 고르면 시작할 때 아이템을 종류별로 하나씩 받아요. 내 차례에 한 번씩 쓸 수 있어요.</p>
+      <ul class="item-rules" id="item-rules"></ul>
       <button class="btn btn-primary wide" data-close>확인</button>
     </div>
   </div>

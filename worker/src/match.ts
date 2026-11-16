@@ -39,6 +39,32 @@ export const MODES: Record<Mode, { seats: number; teams: boolean }> = {
 };
 
 export type Phase = 'lobby' | 'playing' | 'finished';
+
+/**
+ * 아이템전: 시작할 때 종류별로 한 개씩 받아 자기 차례에 쓴다.
+ * - reroll: 세 번 다 굴린 뒤 한 번 더 굴린다.
+ * - erase: 이미 적은 내 칸 하나를 지운다. 그 칸은 다시 비어서 나중에 한 차례 더 채운다.
+ * - flip: 굴린 주사위 하나를 반대 면으로 뒤집는다 (1↔6, 2↔5, 3↔4).
+ */
+export type ItemKind = 'reroll' | 'erase' | 'flip';
+export const ITEM_KINDS: ItemKind[] = ['reroll', 'erase', 'flip'];
+export type ItemCounts = Record<ItemKind, number>;
+
+export interface ItemEvent {
+  playerId: string;
+  item: ItemKind;
+  /** erase: 지운 칸과 원래 점수 */
+  category?: Category;
+  score?: number;
+  /** 포인트로 산 것 (쓴 게 아니라 하나 늘었다) */
+  bought?: boolean;
+  /** flip: 뒤집은 주사위와 눈 */
+  index?: number;
+  from?: number;
+  to?: number;
+  /** 몇 번째 일인지 (같은 칸을 다시 지워도 화면이 새 일로 알아보게) */
+  n: number;
+}
 export type EndReason = 'complete' | 'forfeit';
 
 export interface Player {
@@ -80,6 +106,8 @@ export interface ScoredEvent {
   auto: boolean;
   /** 한 번도 굴리지 않아 0점을 적었다. */
   scratch?: boolean;
+  /** 몇 번째 일인지 (아이템전에서 지운 칸에 다시 적어도 새로 적은 것으로 알아보게) */
+  n?: number;
 }
 
 export interface Game {
@@ -99,6 +127,15 @@ export interface Game {
   rewards?: Record<string, number>;
   /** 포인트를 실제로 지급했다. */
   rewardsGranted?: boolean;
+  /** 아이템전: 남은 아이템 (playerId → 종류별 개수). 기본전이면 없음. */
+  items?: Record<string, ItemCounts> | null;
+  /** 아이템전: 포인트로 한 번 더 산 아이템 (playerId → 종류별 0·1). 한 판에 종류별로 한 번까지. */
+  bought?: Record<string, ItemCounts>;
+  /** 이번 차례에 '한 번 더 굴리기'를 썼다. */
+  bonusRoll?: boolean;
+  lastItem?: ItemEvent | null;
+  /** 점수 적기·아이템 사용이 일어날 때마다 1씩 는다. */
+  events?: number;
 }
 
 export interface RoomState {
@@ -112,6 +149,8 @@ export interface RoomState {
   game: Game | null;
   /** 이 방에서 몇 번째 판인지. */
   match: number;
+  /** 아이템전. 예전에 만든 방은 없음(기본전). */
+  items?: boolean;
 }
 
 export class RoomError extends Error {}
@@ -142,10 +181,11 @@ export function cleanName(value: unknown): string {
   return name;
 }
 
-export function createRoom(code: string, mode: Mode, now: number): RoomState {
+export function createRoom(code: string, mode: Mode, now: number, items = false): RoomState {
   return {
     code,
     mode,
+    items,
     createdAt: now,
     updatedAt: now,
     phase: 'lobby',
@@ -241,6 +281,16 @@ export function setTeam(state: RoomState, playerId: string, team: unknown, now: 
   state.updatedAt = now;
 }
 
+/** 방장이 대기실에서 기본전·아이템전을 바꾼다. */
+export function setItems(state: RoomState, playerId: string, items: unknown, now: number): void {
+  playerOf(state, playerId);
+  if (state.hostId !== playerId) throw new RoomError('방장만 바꿀 수 있어요');
+  if (state.phase !== 'lobby') throw new RoomError('게임 중에는 바꿀 수 없어요');
+  if (typeof items !== 'boolean') throw new RoomError('규칙을 다시 골라 주세요');
+  state.items = items;
+  state.updatedAt = now;
+}
+
 function shuffle<T>(items: T[], rand: () => number): T[] {
   const a = [...items];
   for (let i = a.length - 1; i > 0; i--) {
@@ -259,6 +309,7 @@ function beginTurn(state: RoomState, game: Game, now: number): void {
   game.dice = Array(DICE_COUNT).fill(0);
   game.held = Array(DICE_COUNT).fill(false);
   game.rollsLeft = ROLLS_PER_TURN;
+  game.bonusRoll = false;
   game.turnDeadline = turnDeadline(state, game.order[game.turn], now);
 }
 
@@ -294,6 +345,9 @@ export function start(state: RoomState, playerId: string, now: number, rand: () 
     turnDeadline: null,
     lastScored: null,
     endReason: null,
+    items: state.items ? Object.fromEntries(order.map((id) => [id, { reroll: 1, erase: 1, flip: 1 }])) : null,
+    lastItem: null,
+    events: 0,
   };
   beginTurn(state, game, now);
   state.game = game;
@@ -373,7 +427,8 @@ function write(state: RoomState, game: Game, category: Category, auto: boolean, 
   const playerId = game.order[game.turn];
   const score = scratch ? 0 : scoreFor(category, game.dice);
   game.sheets[playerId][category] = score;
-  game.lastScored = { playerId, category, score, auto, ...(scratch ? { scratch: true } : {}) };
+  game.events = (game.events ?? 0) + 1;
+  game.lastScored = { playerId, category, score, auto, ...(scratch ? { scratch: true } : {}), n: game.events };
   state.updatedAt = now;
   advance(state, game, now);
 }
@@ -385,6 +440,79 @@ export function score(state: RoomState, playerId: string, category: unknown, now
   if (game.rollsLeft === ROLLS_PER_TURN) throw new RoomError('먼저 주사위를 굴려 주세요');
   if (game.sheets[playerId][category] !== undefined) throw new RoomError('이미 적은 칸이에요');
   write(state, game, category, false, now);
+}
+
+/** 아이템 쓰기 (아이템전, 내 차례에만). arg: erase는 칸 이름, flip은 주사위 번호. */
+export function useItem(state: RoomState, playerId: string, item: unknown, arg: unknown, now: number): void {
+  const game = currentGame(state, playerId);
+  if (!game.items) throw new RoomError('아이템전이 아니에요');
+  if (typeof item !== 'string' || !ITEM_KINDS.includes(item as ItemKind)) throw new RoomError('아이템을 다시 골라 주세요');
+  const kind = item as ItemKind;
+  const counts = game.items[playerId];
+  if (!counts || counts[kind] <= 0) throw new RoomError('이미 쓴 아이템이에요');
+  const rolled = game.rollsLeft < ROLLS_PER_TURN;
+  const sheet = game.sheets[playerId];
+  let event: Omit<ItemEvent, 'n'>;
+
+  if (kind === 'reroll') {
+    if (!rolled || game.rollsLeft > 0) throw new RoomError('세 번 다 굴린 뒤에 쓸 수 있어요');
+    game.rollsLeft = 1;
+    game.bonusRoll = true;
+    event = { playerId, item: kind };
+  } else if (kind === 'flip') {
+    if (!rolled) throw new RoomError('주사위를 굴린 뒤에 쓸 수 있어요');
+    if (typeof arg !== 'number' || !Number.isInteger(arg) || arg < 0 || arg >= DICE_COUNT) {
+      throw new RoomError('뒤집을 주사위를 골라 주세요');
+    }
+    const from = game.dice[arg];
+    const to = 7 - from;
+    game.dice[arg] = to;
+    event = { playerId, item: kind, index: arg, from, to };
+  } else {
+    if (!isCategory(arg)) throw new RoomError('지울 칸을 골라 주세요');
+    const old = sheet[arg];
+    if (old === undefined) throw new RoomError('아직 적지 않은 칸이에요');
+    delete sheet[arg];
+    event = { playerId, item: kind, category: arg, score: old };
+  }
+
+  counts[kind] -= 1;
+  game.events = (game.events ?? 0) + 1;
+  game.lastItem = { ...event, n: game.events };
+  state.updatedAt = now;
+}
+
+/**
+ * 아이템을 포인트로 살 수 있는지 확인하고 계정 id를 돌려준다. (포인트 차감은 방 밖 DB에서)
+ * 로그인한 사람만, 다 쓴 아이템만, 한 판에 종류별로 한 번까지.
+ */
+export function canBuyItem(state: RoomState, playerId: string, item: unknown): string {
+  const player = playerOf(state, playerId);
+  const game = state.game;
+  if (state.phase !== 'playing' || !game) throw new RoomError('게임 중에만 살 수 있어요');
+  if (!game.items) throw new RoomError('아이템전이 아니에요');
+  if (typeof item !== 'string' || !ITEM_KINDS.includes(item as ItemKind)) throw new RoomError('아이템을 다시 골라 주세요');
+  const kind = item as ItemKind;
+  if (player.left) throw new RoomError('기권해서 살 수 없어요');
+  if (!player.userId) throw new RoomError('로그인하면 포인트로 살 수 있어요');
+  if (isComplete(game.sheets[playerId])) throw new RoomError('12칸을 다 채워서 쓸 곳이 없어요');
+  if ((game.items[playerId]?.[kind] ?? 0) > 0) throw new RoomError('아직 남아 있는 아이템이에요');
+  if (game.bought?.[playerId]?.[kind]) throw new RoomError('이번 판에는 이미 한 번 샀어요');
+  return player.userId;
+}
+
+/** 포인트 차감이 끝난 뒤 아이템을 하나 준다. 그 사이 상황이 바뀌었으면 RoomError (환불해야 함). */
+export function buyItem(state: RoomState, playerId: string, item: unknown, now: number): void {
+  canBuyItem(state, playerId, item);
+  const game = state.game as Game;
+  const kind = item as ItemKind;
+  (game.items as Record<string, ItemCounts>)[playerId][kind] += 1;
+  game.bought ??= {};
+  game.bought[playerId] ??= { reroll: 0, erase: 0, flip: 0 };
+  game.bought[playerId][kind] = 1;
+  game.events = (game.events ?? 0) + 1;
+  game.lastItem = { playerId, item: kind, bought: true, n: game.events };
+  state.updatedAt = now;
 }
 
 /**
@@ -576,6 +704,7 @@ export function viewFor(state: RoomState, playerId: string | null, now: number, 
     open: hasOpenSeat(state),
     host: state.hostId ? seatOf(state.hostId) : -1,
     seats: MODES[state.mode].seats,
+    items: !!state.items,
     players: state.players.map((p, seat) => ({
       seat,
       name: p.name,
@@ -610,6 +739,29 @@ export function viewFor(state: RoomState, playerId: string | null, now: number, 
                 score: game.lastScored.score,
                 auto: game.lastScored.auto,
                 scratch: !!game.lastScored.scratch,
+                n: game.lastScored.n ?? 0,
+              }
+            : null,
+          /** 아이템전: 자리마다 남은 아이템. 기본전이면 null. */
+          items: game.items
+            ? game.order.map((id) => ({
+                seat: seatOf(id),
+                ...(game.items?.[id] ?? { reroll: 0, erase: 0, flip: 0 }),
+                bought: game.bought?.[id] ?? { reroll: 0, erase: 0, flip: 0 },
+              }))
+            : null,
+          bonusRoll: !!game.bonusRoll,
+          lastItem: game.lastItem
+            ? {
+                seat: seatOf(game.lastItem.playerId),
+                item: game.lastItem.item,
+                bought: !!game.lastItem.bought,
+                category: game.lastItem.category ?? null,
+                score: game.lastItem.score ?? null,
+                index: game.lastItem.index ?? null,
+                from: game.lastItem.from ?? null,
+                to: game.lastItem.to ?? null,
+                n: game.lastItem.n,
               }
             : null,
           endReason: game.endReason,

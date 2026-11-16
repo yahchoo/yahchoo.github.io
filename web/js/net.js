@@ -8,7 +8,7 @@ export function apiBase() {
   return '';
 }
 
-export async function createRoom(mode) {
+export async function createRoom(mode, items = false) {
   const base = apiBase();
   if (!base) throw new Error('같이 하기 서버가 아직 연결되지 않았어요');
   let res;
@@ -16,7 +16,7 @@ export async function createRoom(mode) {
     res = await fetch(`${base}/api/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, items }),
     });
   } catch {
     throw new Error('서버에 연결할 수 없어요. 인터넷 연결을 확인해 주세요');

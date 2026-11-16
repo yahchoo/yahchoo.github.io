@@ -20,10 +20,11 @@ import {
   onAccountChange, refreshMe, saveProfile, updatePoints,
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
-import { DOUBLE_DAILY_LIMIT, JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
+import { DOUBLE_DAILY_LIMIT, ITEM_BUY_COST, JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
 import { fillAds, prepareRewarded, rewardedAvailable, startNativeAds, watchRewarded } from './ads.js';
 import { haptic, inApp, native, share } from './native.js';
 import { offerApp } from './openapp.js';
+import { GAME_ITEM, GAME_ITEMS, itemIcon } from './gameitems.js';
 
 const $ = (id) => document.getElementById(id);
 const MODE_LABEL = { '1v1': '1:1', '1v1v1': '1:1:1', '2v2': '2:2' };
@@ -109,9 +110,11 @@ function toast(text) {
 }
 
 let confirmAction = null;
-function confirmExit(text, action, okText = '나가기') {
+function confirmExit(text, action, okText = '나가기', { cancelText = '계속하기', danger = true } = {}) {
   $('confirm-text').textContent = text;
   $('confirm-ok').textContent = okText;
+  $('confirm-ok').className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+  $('confirm').querySelector('[data-close]').textContent = cancelText;
   confirmAction = action;
   openOverlay('confirm');
 }
@@ -143,6 +146,15 @@ function setUrlRoom(code) {
     const tr = el('tr');
     tr.append(el('th', '', CATEGORY_INFO[cat].name), el('td', '', CATEGORY_INFO[cat].hint));
     table.append(tr);
+  }
+  const list = $('item-rules');
+  for (const it of GAME_ITEMS) {
+    const li = el('li');
+    li.append(itemIcon(it.id), el('b', '', it.full), el('span', '', it.desc));
+    list.append(li);
+  }
+  for (const box of document.querySelectorAll('[data-item-icons]')) {
+    for (const it of GAME_ITEMS) box.append(itemIcon(it.id));
   }
 })();
 for (const btn of document.querySelectorAll('[data-open="rules"]')) {
@@ -211,6 +223,13 @@ const ui = {
   lastTurnKey: null,
   resultShownFor: null,
   model: null,
+  /** 아이템전: 고르는 중인 아이템 ('flip' 주사위 고르기, 'erase' 칸 고르기) */
+  itemMode: null,
+  /** 칸 지우기: 한 번 누른 칸 (한 번 더 누르면 지운다) */
+  eraseArmed: null,
+  /** 주사위 뒤집기: 한 번 누른 주사위 (한 번 더 누르면 뒤집는다) */
+  flipPick: null,
+  lastItemKey: null,
 };
 
 const diceButtons = [];
@@ -218,7 +237,10 @@ for (let i = 0; i < 5; i++) {
   const b = makeDie(0, 'button');
   b.type = 'button';
   b.addEventListener('click', () => onHold(i));
-  b.addEventListener('animationend', () => b.classList.remove('rolling'));
+  b.addEventListener('animationend', (ev) => {
+    if (ev.animationName === 'die-flip') b.classList.remove('flipped');
+    else b.classList.remove('rolling');
+  });
   diceButtons.push(b);
 }
 $('dice').append(...diceButtons);
@@ -278,6 +300,8 @@ document.addEventListener('keydown', (ev) => {
 function onRoll() {
   if (!ui.model?.canRoll || isRolling()) return;
   ui.armed = null;
+  ui.itemMode = null;
+  ui.eraseArmed = null;
   if (ui.kind === 'solo') {
     // 서버에서 굴리는 판은 결과를 기다리지 않고 바로 굴러가기 시작한다.
     if (solo.online) startRolling({ ...ui.model, rollsLeft: ui.model.rollsLeft - 1 }, { pending: true });
@@ -289,6 +313,19 @@ function onRoll() {
 }
 
 function onHold(i) {
+  if (ui.itemMode === 'flip') {
+    if (!ui.model?.items?.can.flip || rollAnim.pending || isRolling()) return;
+    if (ui.flipPick !== i) {
+      // 처음 누르면 고르기만 한다 (다른 색 테두리). 한 번 더 누르면 뒤집는다.
+      ui.flipPick = i;
+      renderGame(ui.model);
+      return;
+    }
+    ui.itemMode = null;
+    ui.flipPick = null;
+    room.conn?.send({ type: 'item', item: 'flip', index: i });
+    return;
+  }
   // 결과를 기다리는 중에는 눈을 모르니 막고, 결과가 온 뒤 주사위가 멈추는 중에는 바로 받는다.
   if (!ui.model?.canHold || rollAnim.pending) return;
   ui.armed = null;
@@ -306,9 +343,106 @@ function onHold(i) {
   }
 }
 
+/* 아이템전: 아이템 버튼 */
+function onItem(id) {
+  const m = ui.model;
+  if (!m?.items || isRolling() || rollAnim.pending) return;
+  if (ui.itemMode === id) {
+    // 다시 누르면 고르기 취소
+    ui.itemMode = null;
+    ui.eraseArmed = null;
+    renderGame(m);
+    return;
+  }
+  if (!m.items.can[id]) {
+    toast(m.items.why[id] ?? '지금은 쓸 수 없어요');
+    return;
+  }
+  ui.armed = null;
+  ui.eraseArmed = null;
+  if (id === 'reroll') {
+    ui.itemMode = null;
+    room.conn?.send({ type: 'item', item: 'reroll' });
+    haptic?.('light');
+    return;
+  }
+  ui.itemMode = id;
+  renderGame(m);
+}
+
+/** 다 쓴 아이템을 포인트로 한 번 더 산다 (로그인한 사람만, 한 판에 종류별로 한 번). */
+function onBuy(id) {
+  const it = GAME_ITEM[id];
+  const me = currentUser();
+  if (!me) {
+    toast('로그인하면 포인트로 아이템을 한 번 더 살 수 있어요');
+    return;
+  }
+  const points = me.points ?? 0;
+  if (points < ITEM_BUY_COST) {
+    toast(`포인트가 부족해요 (${points}P / ${ITEM_BUY_COST}P)`);
+    return;
+  }
+  confirmExit(
+    `${it.full}를 ${ITEM_BUY_COST}포인트로 한 번 더 살까요? 한 판에 한 번만 살 수 있어요. (지금 ${points}포인트)`,
+    () => room.conn?.send({ type: 'buy', item: id }),
+    `${ITEM_BUY_COST}P로 사기`,
+    { cancelText: '취소', danger: false },
+  );
+}
+
+function onErase(cat) {
+  const m = ui.model;
+  if (ui.itemMode !== 'erase' || !m?.items?.can.erase) return;
+  if (ui.eraseArmed !== cat) {
+    ui.eraseArmed = cat;
+    renderGame(m);
+    return;
+  }
+  ui.itemMode = null;
+  ui.eraseArmed = null;
+  room.conn?.send({ type: 'item', item: 'erase', category: cat });
+}
+
+function renderItemBar(m) {
+  const bar = $('item-bar');
+  if (!m.items) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  bar.replaceChildren();
+  for (const it of GAME_ITEMS) {
+    const left = m.items.mine[it.id] ?? 0;
+    const b = el('button', 'item-btn');
+    b.type = 'button';
+    b.append(itemIcon(it.id), el('span', 'item-nm', it.name));
+    // 다 쓴 아이템: 한 판에 한 번 포인트로 더 살 수 있다
+    const buyable = left <= 0 && !m.items.bought[it.id] && m.items.canBuy;
+    if (buyable) {
+      b.classList.add('buy');
+      b.append(el('span', 'item-ct', `${ITEM_BUY_COST}P`));
+    } else if (left <= 0) {
+      b.classList.add('used');
+      b.append(el('span', 'item-ct', '씀'));
+    } else {
+      b.append(el('span', 'item-ct', `${left}`));
+    }
+    const usable = left > 0 && m.items.can[it.id];
+    b.classList.toggle('ready', usable);
+    b.classList.toggle('active', ui.itemMode === it.id);
+    b.setAttribute('aria-pressed', String(ui.itemMode === it.id));
+    b.setAttribute('aria-label', buyable ? `${it.full} ${ITEM_BUY_COST}포인트로 한 번 더 사기` : `${it.full} ${left > 0 ? `${left}개 남음` : '다 씀'}`);
+    b.disabled = buyable ? false : left <= 0 || !m.items.myTurn || m.finished;
+    b.addEventListener('click', () => (buyable ? onBuy(it.id) : onItem(it.id)));
+    bar.append(b);
+  }
+}
+
 function onPick(cat) {
   const m = ui.model;
   if (!m?.canScore || isRolling()) return;
+  if (ui.itemMode) return;
   if (ui.armed !== cat) {
     ui.armed = cat;
     renderGame(m);
@@ -332,6 +466,7 @@ function onPick(cat) {
  */
 function renderGame(m) {
   ui.model = m;
+  if (ui.itemMode !== 'flip') ui.flipPick = null;
   $('game-restart').hidden = ui.kind !== 'solo';
   $('round-now').textContent = String(m.round);
 
@@ -366,7 +501,10 @@ function renderGame(m) {
   diceButtons.forEach((b, i) => {
     if (!rollAnim.dice.has(i)) paintDie(b, m.dice[i] ?? 0);
     b.classList.toggle('held', !!m.held[i] && m.rollsLeft < ROLLS_PER_TURN);
-    b.disabled = !m.canHold || rollAnim.pending;
+    const flipping = ui.itemMode === 'flip' && !!m.items?.can.flip;
+    b.disabled = !(m.canHold || flipping) || rollAnim.pending;
+    b.classList.toggle('pick-flip', flipping && ui.flipPick !== i);
+    b.classList.toggle('flip-sel', flipping && ui.flipPick === i);
     b.setAttribute('aria-pressed', String(!!m.held[i]));
   });
 
@@ -375,6 +513,12 @@ function renderGame(m) {
   if (rolling) hint = '데구르르…';
   else if (m.finished) hint = '게임이 끝났어요';
   else if (!m.turn?.me) hint = m.waitingText ?? '';
+  else if (ui.itemMode === 'flip' && ui.flipPick !== null) {
+    const d = m.dice[ui.flipPick];
+    hint = `한 번 더 누르면 뒤집어요 (${d} → ${7 - d})`;
+  } else if (ui.itemMode === 'flip') hint = '뒤집을 주사위를 골라요 (1↔6, 2↔5, 3↔4)';
+  else if (ui.itemMode === 'erase' && ui.eraseArmed) hint = `한 번 더 누르면 ${CATEGORY_INFO[ui.eraseArmed].name} 칸을 지워요`;
+  else if (ui.itemMode === 'erase') hint = '점수판에서 지울 내 칸을 눌러요';
   else if (ui.armed) hint = `한 번 더 누르면 ${CATEGORY_INFO[ui.armed].name}에 ${scoreFor(ui.armed, m.dice)}점을 적어요`;
   else if (m.rollsLeft === ROLLS_PER_TURN) hint = '주사위를 굴려서 시작해요';
   else if (m.rollsLeft > 0) hint = '남길 주사위를 눌러 고정하거나, 점수판에서 칸을 골라요';
@@ -397,6 +541,7 @@ function renderGame(m) {
   else if (m.watching) label.textContent = '관전 중';
   else if (!m.turn?.me) label.textContent = '기다리는 중';
   else if (m.rollsLeft === ROLLS_PER_TURN) label.textContent = '굴리기';
+  else if (m.bonusRoll && m.rollsLeft > 0) label.textContent = '한 번 더 굴리기';
   else if (m.rollsLeft > 0) label.textContent = '다시 굴리기';
   else label.textContent = '칸을 골라 적어요';
   $('roll-pips').hidden = m.finished || !m.turn?.me;
@@ -404,9 +549,16 @@ function renderGame(m) {
   const cheering = !!m.cheers && !m.finished;
   btn.hidden = cheering;
   renderCheerRow(cheering ? m.cheers : null);
-  $('roll-pips').querySelectorAll('i').forEach((pip, i) => {
-    pip.classList.toggle('used', i < ROLLS_PER_TURN - m.rollsLeft);
+  // 굴린 횟수 점. '한 번 더 굴리기'를 쓰면 점 하나가 더 붙는다.
+  const pips = $('roll-pips');
+  const pipCount = ROLLS_PER_TURN + (m.bonusRoll ? 1 : 0);
+  while (pips.children.length < pipCount) pips.append(el('i'));
+  while (pips.children.length > pipCount) pips.lastElementChild.remove();
+  [...pips.children].forEach((pip, i) => {
+    pip.classList.toggle('used', i < pipCount - m.rollsLeft);
+    pip.classList.toggle('bonus', i === ROLLS_PER_TURN);
   });
+  renderItemBar(m);
 
   renderSheet(m, rolling);
   updateTimer();
@@ -808,6 +960,17 @@ function renderSheet(m, rolling = false) {
       ph.append(pennant(c.cls));
     }
     ph.append(el('span', 'nm', c.name), el('span', 'st', c.status || '\u00a0'));
+    if (c.items) {
+      // 아이템전: 남은 아이템을 작은 아이콘으로 (쓴 것은 흐리게)
+      const row = el('span', 'it-mini');
+      for (const it of GAME_ITEMS) {
+        const ic = itemIcon(it.id, 'it-dot');
+        if (!c.items[it.id]) ic.classList.add('gone');
+        row.append(ic);
+      }
+      row.setAttribute('aria-label', `남은 아이템: ${GAME_ITEMS.filter((it) => c.items[it.id]).map((it) => it.full).join(', ') || '없음'}`);
+      ph.append(row);
+    }
     th.append(ph);
     hr.append(th);
   }
@@ -824,12 +987,23 @@ function renderSheet(m, rolling = false) {
     cols.forEach((c, i) => {
       const td = el('td', tdClass(c));
       const value = c.scores[cat];
-      if (value !== undefined) {
+      const erasing = ui.itemMode === 'erase' && m.previewCol === i && !rolling;
+      if (value !== undefined && erasing) {
+        // 칸 지우기: 내 점수판의 적은 칸을 눌러 지운다
+        td.classList.add('filled');
+        const b = el('button', `cell erasable${ui.eraseArmed === cat ? ' armed' : ''}`);
+        b.append(el('span', 'ev', String(value)));
+        b.type = 'button';
+        b.dataset.cat = cat;
+        b.setAttribute('aria-label', `${CATEGORY_INFO[cat].name} ${value}점 지우기`);
+        b.addEventListener('click', () => onErase(cat));
+        td.append(b);
+      } else if (value !== undefined) {
         td.classList.add('filled'); // 기록한 칸은 배경색으로 구분
         const cell = el('div', 'cell', String(value));
         if (c.just === cat) cell.classList.add('just');
         td.append(cell);
-      } else if (m.previewCol === i && m.canScore && !rolling) {
+      } else if (m.previewCol === i && m.canScore && !rolling && !erasing) {
         const s = scoreFor(cat, m.dice);
         // 아직 적지 않은 '적을 수 있는 점수'는 점선 테두리 안에 보여 준다.
         const b = el('button', `cell preview${s === 0 ? ' zero' : ''}${ui.armed === cat ? ' armed' : ''}`);
@@ -913,6 +1087,8 @@ function leaveGameState() {
   ui.kind = null;
   ui.model = null;
   ui.armed = null;
+  ui.itemMode = null;
+  ui.eraseArmed = null;
   ui.lastRollSeq = null;
   closeOverlay('result');
 }
@@ -1269,6 +1445,13 @@ async function loadRanking(period) {
 /* ---------------------------------------------------------------- 같이 하기: 방 만들기 / 들어가기 */
 
 let selectedMode = '1v1';
+let selectedItems = false;
+for (const btn of document.querySelectorAll('.rule-opt')) {
+  btn.addEventListener('click', () => {
+    selectedItems = btn.dataset.items === '1';
+    for (const b of document.querySelectorAll('.rule-opt')) b.setAttribute('aria-checked', String(b === btn));
+  });
+}
 for (const btn of document.querySelectorAll('.mode')) {
   btn.addEventListener('click', () => {
     selectedMode = btn.dataset.mode;
@@ -1308,7 +1491,7 @@ $('create-room').addEventListener('click', async () => {
   btn.disabled = true;
   $('online-error').textContent = '';
   try {
-    const code = await createRoom(selectedMode);
+    const code = await createRoom(selectedMode, selectedItems);
     enterRoom(code, name);
   } catch (err) {
     $('online-error').textContent = err.message;
@@ -1349,11 +1532,13 @@ function enterRoom(code, name) {
   ui.lastMatch = null;
   ui.lastScoredKey = null;
   ui.lastTurnKey = null;
+  ui.lastItemKey = null;
   ui.resultShownFor = null;
   setUrlRoom(code);
   $('lobby-code').textContent = code;
   $('lobby-title').textContent = '대기실';
   $('lobby-seats').replaceChildren();
+  $('lobby-rule').hidden = true;
   $('lobby-note').textContent = '방에 들어가는 중…';
   $('start-game').hidden = true;
   $('sit-down').hidden = true;
@@ -1440,7 +1625,8 @@ function inviteLink() {
 $('copy-invite').addEventListener('click', async () => {
   const link = inviteLink();
   const mode = MODE_LABEL[room.view?.mode] ?? '';
-  const text = `오늘도 야추 ${mode} 한 판 같이 해요! 방 코드 ${room.code}`;
+  const rule = room.view?.items ? ' 아이템전' : '';
+  const text = `오늘도 야추 ${mode}${rule} 한 판 같이 해요! 방 코드 ${room.code}`;
   const message = `${text}\n${link}`;
   // 링크를 글 안에 넣는다. url을 따로 주면 공유 창의 '복사'나 메모장 같은 곳에는 글만 들어가 링크가 빠진다.
   // (카카오톡·메시지는 글 속 링크도 알아보고 미리보기를 붙인다)
@@ -1533,7 +1719,7 @@ function onRoomState(view) {
   // 다른 사람이 적은 점수, 시간 초과 알림
   let justScored = null;
   if (g.lastScored) {
-    const key = `${view.match}:${g.lastScored.seat}:${g.lastScored.category}`;
+    const key = `${view.match}:${g.lastScored.seat}:${g.lastScored.category}:${g.lastScored.n ?? ''}`;
     if (key !== ui.lastScoredKey) {
       const first = ui.lastScoredKey === null && prev === null;
       if (!first) justScored = g.lastScored;
@@ -1548,14 +1734,40 @@ function onRoomState(view) {
     }
   }
 
+  // 아이템 쓴 것 알림
+  let flipped = null;
+  if (g.lastItem) {
+    const key = `${view.match}:${g.lastItem.n}`;
+    if (key !== ui.lastItemKey) {
+      const first = ui.lastItemKey === null && prev === null;
+      ui.lastItemKey = key;
+      if (!first) {
+        const { seat, item, category, index, from, to, bought } = g.lastItem;
+        const mine = seat === view.you;
+        const who = mine ? '' : `${nameOf(seat)}: `;
+        if (bought) toast(mine ? `${GAME_ITEM[item].full}를 샀어요 (-${ITEM_BUY_COST}P)` : `${who}포인트로 ${GAME_ITEM[item].full}를 한 번 더 샀어요`);
+        else if (item === 'reroll') toast(mine ? '한 번 더 굴릴 수 있어요' : `${who}한 번 더 굴리기!`);
+        else if (item === 'erase') toast(mine ? `${CATEGORY_INFO[category].name} 칸을 지웠어요. 나중에 다시 채울 수 있어요` : `${who}칸 지우기로 ${CATEGORY_INFO[category].name} 칸을 지웠어요`);
+        else if (item === 'flip') {
+          toast(`${who}주사위 뒤집기 ${from} → ${to}`);
+          flipped = index;
+        }
+        haptic?.('light');
+      }
+    }
+  }
+
   // 차례가 바뀌면 고른 칸을 풀어 둔다
   const turnSheetNow = g.sheets.find((s) => s.seat === g.turn);
   const turnKey = `${view.match}:${g.turn}:${turnSheetNow ? filledCount(turnSheetNow.scores) : ''}`;
   if (turnKey !== ui.lastTurnKey) {
     ui.lastTurnKey = turnKey;
     ui.armed = null;
+    ui.itemMode = null;
+    ui.eraseArmed = null;
   }
   if (ui.armed && g.rollSeq !== ui.model?.rollSeq) ui.armed = null;
+  if (flipped !== null) ui.armed = null;
 
   const finished = view.phase === 'finished';
   const myTurn = !finished && g.turn === view.you;
@@ -1586,6 +1798,7 @@ function onRoomState(view) {
       bonus: s.bonus,
       total: s.total,
       now: !finished && seat === g.turn,
+      items: g.items ? g.items.find((it) => it.seat === seat) ?? null : null,
       just: justScored && justScored.seat === seat ? justScored.category : null,
       teamStart: view.mode === '2v2' && i > 0 && p.team !== view.players[order[i - 1]].team,
     };
@@ -1616,6 +1829,8 @@ function onRoomState(view) {
     canRoll: myTurn && g.rollsLeft > 0,
     canHold: myTurn && g.rollsLeft > 0 && g.rollsLeft < ROLLS_PER_TURN,
     canScore: myTurn && g.rollsLeft < ROLLS_PER_TURN,
+    bonusRoll: !!g.bonusRoll,
+    items: itemModel(view, g, myTurn),
     finished,
     previewCol: myTurn ? order.indexOf(view.you) : null,
     teams,
@@ -1630,7 +1845,17 @@ function onRoomState(view) {
         : g.order.filter((seat) => !view.players[seat]?.left).map((seat) => ({ target: seat, name: nameOf(seat), cls: playerCls(view, seat) }))
       : null,
   };
+  if (ui.itemMode && !m.items?.can[ui.itemMode]) {
+    ui.itemMode = null;
+    ui.eraseArmed = null;
+  }
   renderGame(m);
+  if (flipped !== null) {
+    const b = diceButtons[flipped];
+    b.classList.remove('flipped');
+    void b.offsetWidth;
+    b.classList.add('flipped');
+  }
 
   if (finished && ui.resultShownFor !== view.match) {
     ui.resultShownFor = view.match;
@@ -1640,8 +1865,68 @@ function onRoomState(view) {
   }
 }
 
+/** 아이템전: 내 아이템과 지금 쓸 수 있는지. 관전자나 기본전이면 null. */
+function itemModel(view, g, myTurn) {
+  if (!view.items || !g.items || view.spectator) return null;
+  const mine = g.items.find((it) => it.seat === view.you) ?? { reroll: 0, erase: 0, flip: 0 };
+  const sheet = g.sheets.find((s) => s.seat === view.you)?.scores ?? {};
+  const rolled = g.rollsLeft < ROLLS_PER_TURN;
+  const why = {};
+  const can = {};
+  const check = (id, ok, reason) => {
+    can[id] = myTurn && mine[id] > 0 && ok;
+    if (!can[id]) why[id] = !myTurn ? '내 차례에 쓸 수 있어요' : mine[id] <= 0 ? '이미 쓴 아이템이에요' : reason;
+  };
+  check('reroll', rolled && g.rollsLeft === 0, '세 번 다 굴린 뒤에 쓸 수 있어요');
+  check('flip', rolled, '주사위를 굴린 뒤에 쓸 수 있어요');
+  check('erase', filledCount(sheet) > 0, '아직 적은 칸이 없어요');
+  const bought = g.items.find((it) => it.seat === view.you)?.bought ?? {};
+  const canBuy = view.phase === 'playing' && filledCount(sheet) < CATEGORIES.length && !view.players[view.you]?.left;
+  return { mine, can, why, myTurn, bought, canBuy };
+}
+
+function renderLobbyRule(view) {
+  const box = $('lobby-rule');
+  box.hidden = false;
+  box.replaceChildren();
+  const isHost = !view.spectator && view.host === view.you;
+  const head = el('div', 'lr-head');
+  head.append(el('span', 'lr-label', '규칙'));
+  if (isHost) {
+    const seg = el('div', 'seg');
+    seg.setAttribute('role', 'radiogroup');
+    seg.setAttribute('aria-label', '규칙');
+    for (const [on, label] of [[false, '기본전'], [true, '아이템전']]) {
+      const b = el('button', '', label);
+      b.type = 'button';
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(!!view.items === on));
+      b.addEventListener('click', () => {
+        if (!!room.view?.items !== on) room.conn?.send({ type: 'items', on });
+      });
+      seg.append(b);
+    }
+    head.append(seg);
+  } else {
+    head.append(el('strong', 'lr-value', view.items ? '아이템전' : '기본전'));
+  }
+  box.append(head);
+  if (view.items) {
+    const list = el('ul', 'lr-items');
+    for (const it of GAME_ITEMS) {
+      const li = el('li');
+      li.append(itemIcon(it.id), el('b', '', it.full), el('span', '', it.desc));
+      list.append(li);
+    }
+    box.append(list, el('p', 'lr-note', '시작할 때 종류별로 1개씩 받아서 내 차례에 써요'));
+  } else {
+    box.append(el('p', 'lr-note', isHost ? '아이템전으로 바꾸면 아이템 3개를 쓸 수 있어요' : '원래 야추 규칙으로 해요'));
+  }
+}
+
 function renderLobby(view) {
-  $('lobby-title').textContent = `${MODE_LABEL[view.mode]} 대기실`;
+  renderLobbyRule(view);
+  $('lobby-title').textContent = `${MODE_LABEL[view.mode]}${view.items ? ' 아이템전' : ''} 대기실`;
   $('lobby-code').textContent = view.code;
   const box = $('lobby-seats');
   box.replaceChildren();

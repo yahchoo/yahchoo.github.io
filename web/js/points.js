@@ -35,6 +35,9 @@ export const NICKNAME_CHANGE_COST = 300;
 /** 앱 '광고 보고 포인트 2배'를 하루에 받을 수 있는 횟수 (한국 시간 자정에 다시 채워진다) */
 export const DOUBLE_DAILY_LIMIT = 5;
 
+/** 아이템전: 다 쓴 아이템을 한 번 더 사는 값 (한 판에 종류별로 한 번까지) */
+export const ITEM_BUY_COST = 30;
+
 /** @type {Record<string, { name: string, short: string, cost: number, verb: string }>} 관전자 야유 (쓸 때마다 포인트 차감) */
 export const JEERS = {
   hammer: { name: '뿅망치', short: '뿅망치', cost: 20, verb: '뿅망치!' },

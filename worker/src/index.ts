@@ -78,8 +78,11 @@ function roomStub(env: Env, code: string) {
 
 async function createRoom(request: Request, env: Env): Promise<Response> {
   let mode: unknown;
+  let items = false;
   try {
-    mode = ((await request.json()) as { mode?: unknown }).mode;
+    const body = (await request.json()) as { mode?: unknown; items?: unknown };
+    mode = body.mode;
+    items = body.items === true;
   } catch {
     // 아래에서 처리
   }
@@ -88,8 +91,8 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = randomRoomCode();
     const stub = roomStub(env, code);
-    const res = await stub.fetch(`https://room/init?code=${code}&mode=${mode}`, { method: 'POST' });
-    if (res.status === 201) return json({ code, mode }, 201);
+    const res = await stub.fetch(`https://room/init?code=${code}&mode=${mode}&items=${items ? 1 : 0}`, { method: 'POST' });
+    if (res.status === 201) return json({ code, mode, items }, 201);
   }
   throw new HttpError(503, '방을 만들지 못했어요. 잠시 후 다시 시도해 주세요');
 }

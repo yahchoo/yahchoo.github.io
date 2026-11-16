@@ -924,3 +924,126 @@ html { touch-action: manipulation; }
 .open-app-bar span { flex: 1; }
 .open-app-go { flex: none; padding: 8px 12px; border-radius: 10px; background: #f5c518; color: #1b2f5b; font-weight: 700; text-decoration: none; }
 .open-app-close { flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #fff; font-size: 16px; }
+
+/* ---------- 아이템전 ---------- */
+.pick-label { margin: 14px 0 6px; font-size: 14px; font-weight: 700; color: var(--ink-soft); }
+.pick-label:first-of-type { margin-top: 0; }
+.rules-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.rule-opt {
+  display: grid; justify-items: center; align-content: center; gap: 2px;
+  min-height: 92px; padding: 12px 8px;
+  border: 2px solid var(--line); border-radius: var(--radius-m);
+  background: var(--paper); color: var(--ink); font: inherit; cursor: pointer;
+}
+.rule-opt b { font-family: var(--display); font-weight: 400; font-size: 22px; }
+.rule-opt small { color: var(--ink-soft); font-size: 13px; text-align: center; }
+.rule-opt[aria-checked="true"] { border-color: var(--navy); box-shadow: inset 0 0 0 1px var(--navy); }
+.rule-opt[data-items="1"][aria-checked="true"] { background: color-mix(in srgb, var(--signal-yellow) 16%, var(--paper)); }
+.rule-icons { display: flex; gap: 4px; margin-bottom: 2px; color: var(--navy); }
+.rule-icons .item-ic { width: 20px; height: 20px; }
+
+.item-ic { display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; }
+.item-ic svg, .it-dot svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 대기실: 규칙 */
+.lobby-rule {
+  margin-top: 12px; padding: 14px 16px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-m);
+}
+.lr-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lr-label { font-weight: 700; }
+.lr-value { font-family: var(--display); font-weight: 400; font-size: 20px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 999px; background: var(--sail); }
+.seg button {
+  min-height: 38px; padding: 0 16px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink-soft); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.seg button[aria-checked="true"] { background: var(--navy); color: #fff; }
+.lr-items, .item-rules { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.lr-items li, .item-rules li {
+  display: grid; grid-template-columns: 34px 1fr; column-gap: 10px; align-items: center;
+}
+.lr-items .item-ic, .item-rules .item-ic {
+  grid-row: span 2; width: 34px; height: 34px; padding: 6px; border-radius: 10px;
+  background: var(--signal-yellow); color: #13234a;
+}
+.lr-items b, .item-rules b { font-size: 15px; }
+.lr-items span:not(.item-ic), .item-rules span:not(.item-ic) { font-size: 13px; color: var(--ink-soft); line-height: 1.4; }
+.lr-note { margin: 10px 0 0; font-size: 13px; color: var(--ink-soft); }
+.item-rules { margin-bottom: 18px; }
+
+/* 게임: 아이템 버튼 */
+.item-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.item-btn {
+  position: relative;
+  display: grid; justify-items: center; align-content: center; gap: 2px;
+  min-height: 58px; padding: 6px 4px;
+  border: 2px solid var(--line); border-radius: var(--radius-m);
+  background: var(--paper); color: var(--ink);
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: transform .12s ease, background .12s ease, border-color .12s ease;
+}
+.item-btn .item-ic { width: 20px; height: 20px; }
+.item-btn .item-nm { font-size: 13px; line-height: 1.2; white-space: nowrap; }
+.item-btn .item-ct {
+  position: absolute; top: -7px; right: -5px;
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+  display: inline-grid; place-items: center;
+  background: var(--navy); color: #fff; font-size: 11px; line-height: 1;
+}
+.item-btn.ready { border-color: var(--navy); box-shadow: 0 3px 0 var(--navy); }
+.item-btn.ready .item-ic { color: var(--signal-red); }
+.item-btn.ready:active { transform: translateY(3px); box-shadow: none; }
+.item-btn.active {
+  background: var(--signal-yellow); color: #13234a; border-color: #13234a;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal-yellow) 45%, transparent);
+  animation: item-pulse 1.1s ease-in-out infinite;
+}
+.item-btn.active .item-ic { color: #13234a; }
+.item-btn:disabled { cursor: default; opacity: .55; }
+.item-btn.used { opacity: .4; border-style: dashed; }
+.item-btn.used .item-nm { text-decoration: line-through; }
+.item-btn.used .item-ct { background: var(--line); color: var(--ink-soft); }
+@keyframes item-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--signal-yellow) 20%, transparent); } }
+
+/* 4번째(보너스) 굴리기 점 */
+.roll-pips i.bonus { background: var(--signal-red); }
+.roll-pips i.bonus.used { background: transparent; box-shadow: inset 0 0 0 2px rgba(216, 58, 46, .6); }
+
+/* 뒤집을 주사위 고르기 */
+.die.pick-flip { animation: wobble-pick 1s ease-in-out infinite; outline: 2px dashed rgba(255, 255, 255, .7); outline-offset: 3px; cursor: pointer; }
+/* 뒤집을 주사위로 고른 것: 고정(노랑)과 다른 빨간 테두리 */
+.die.flip-sel {
+  transform: translateY(-8px);
+  box-shadow: inset 0 -4px 0 rgba(27, 47, 91, .16), 0 0 0 4px #ff5a4e, 0 0 16px rgba(255, 90, 78, .55);
+}
+.die.flip-sel::after {
+  content: '뒤집기';
+  position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
+  font-size: 12px; font-weight: 700; color: #ff8a80; white-space: nowrap;
+}
+@keyframes wobble-pick { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+.die.flipped { animation: die-flip .5s ease; }
+@keyframes die-flip {
+  0% { transform: rotateX(0) scale(1); }
+  50% { transform: rotateX(90deg) scale(1.12); }
+  100% { transform: rotateX(0) scale(1); }
+}
+
+/* 칸 지우기: 지울 수 있는 내 칸 */
+.cell.erasable { cursor: pointer; }
+.cell.erasable .ev {
+  min-width: 2.6em; padding: 1px 8px; border-radius: 999px;
+  border: 1.5px dashed var(--signal-red); color: var(--signal-red); line-height: 1.5;
+}
+.cell.erasable.armed .ev { background: var(--signal-red); color: #fff; border-style: solid; text-decoration: line-through; }
+
+/* 점수판 머리글: 남은 아이템 */
+.it-mini { display: flex; gap: 2px; justify-content: center; color: var(--ink); }
+.it-dot { display: inline-block; width: 14px; height: 14px; }
+.it-dot.gone { opacity: .22; }
+
+/* 다 쓴 아이템: 포인트로 한 번 더 사기 */
+.item-btn.buy { border-style: dashed; border-color: var(--kelp); color: var(--ink-soft); }
+.item-btn.buy .item-ic { color: var(--kelp); }
+.item-btn.buy .item-ct { background: var(--kelp); }
