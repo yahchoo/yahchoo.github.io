@@ -384,7 +384,7 @@ function onBuy(id) {
     return;
   }
   confirmExit(
-    `${it.full}를 ${ITEM_BUY_COST}포인트로 한 번 더 살까요? 한 판에 한 번만 살 수 있어요. (지금 ${points}포인트)`,
+    `${it.full}를 ${ITEM_BUY_COST}포인트로 한 번 더 살까요? 한 판에 한 번만 살 수 있어요.\n\n지금 ${points}포인트 → 산 뒤 ${points - ITEM_BUY_COST}포인트`,
     () => room.conn?.send({ type: 'buy', item: id }),
     `${ITEM_BUY_COST}P로 사기`,
     { cancelText: '취소', danger: false },
