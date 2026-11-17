@@ -1444,6 +1444,11 @@ $('copy-invite').addEventListener('click', async () => {
   const message = `${text}\n${link}`;
   // 링크를 글 안에 넣는다. url을 따로 주면 공유 창의 '복사'나 메모장 같은 곳에는 글만 들어가 링크가 빠진다.
   // (카카오톡·메시지는 글 속 링크도 알아보고 미리보기를 붙인다)
+  // PC 웹은 공유 창 대신 바로 링크 복사 (휴대폰 웹·앱은 공유 창)
+  if (!usesShareSheet()) {
+    copyInvite(message);
+    return;
+  }
   const data = { title: '오늘도 야추', text: message };
   const shared = await share(data);
   if (shared === true || shared === 'cancel') return; // 공유했거나 공유 창을 닫음
@@ -1451,7 +1456,17 @@ $('copy-invite').addEventListener('click', async () => {
   copyInvite(message);
 });
 
-/** 기본 공유 창이 없는 곳: 초대 문구와 링크를 복사한다. 붙여 넣으면 링크 미리보기가 붙는다. */
+/** 휴대폰·태블릿(앱 포함)인지. PC 브라우저는 공유 창 대신 링크를 복사한다. */
+function usesShareSheet() {
+  if (native) return true;
+  const ua = navigator.userAgent;
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+  // 아이패드는 PC(맥) 주소로 보일 때가 있어 터치 지원으로 구분
+  if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+  return false;
+}
+
+/** PC 웹이나 기본 공유 창이 없는 곳: 초대 문구와 링크를 복사한다. 붙여 넣으면 링크 미리보기가 붙는다. */
 async function copyInvite(message) {
   const label = $('invite-label');
   let copied = false;
