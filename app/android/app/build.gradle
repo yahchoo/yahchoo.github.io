@@ -9,7 +9,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // 빌드 번호는 GitHub Actions 실행 번호(BUILD_NUMBER), 버전 이름은 iOS와 같게
         versionCode((System.getenv("BUILD_NUMBER") ?: "1").toInteger())
-        versionName "1.0.0"
+        versionName "1.0.1"
         resValue "string", "admob_app_id", (System.getenv("ADMOB_ANDROID_APP_ID") ?: "ca-app-pub-3940256099942544~3347511713")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
