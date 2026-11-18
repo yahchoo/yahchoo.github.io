@@ -1086,8 +1086,8 @@ html { touch-action: manipulation; }
 .attack-targets { display: grid; gap: 8px; margin-bottom: 12px; }
 .attack-target {
   display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 14px;
-  border: 2px solid var(--signal-red); border-radius: var(--radius-m);
-  background: color-mix(in srgb, var(--signal-red) 6%, var(--paper)); color: var(--ink);
+  border: 2px solid var(--line); border-radius: var(--radius-m);
+  background: var(--paper); color: var(--ink);
   font: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
 }
 .attack-target:active { transform: translateY(2px); }
@@ -1113,9 +1113,16 @@ html { touch-action: manipulation; }
 .atk-row:last-child { border-bottom: 0; }
 .atk-row.lower-start { border-top: 2px solid var(--ink); }
 .atk-row .vl { position: relative; min-width: 3ch; text-align: right; font-family: var(--display); font-size: 20px; }
-.atk-row.hit { background: #ffd9d5; box-shadow: inset 4px 0 0 var(--signal-red); }
-.atk-row.picked { background: #ffe3e0; box-shadow: inset 0 0 0 2px var(--signal-red); animation: atk-pick .45s ease 1; }
-@keyframes atk-pick { 50% { transform: scale(1.03); } }
+.atk-row.hit { background: #ffd9d5; }
+/* 걸린 칸: 테두리 없이 배경색만 (위·아래 끝 칸도 둥근 모서리에 잘리지 않게) */
+.atk-row.picked { background: #ffb8b0; animation: atk-pick .5s ease 1; }
+@keyframes atk-pick { 0%, 100% { background: #ffb8b0; } 50% { background: #ff8f84; } }
+.atk-none {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--signal-red); color: #fff; font-family: var(--body); font-weight: 900; font-size: 17px;
+  animation: atk-none-pop .35s cubic-bezier(.2, 1.6, .4, 1);
+}
+@keyframes atk-none-pop { from { transform: scale(0); } }
 /* 지우개가 점수 위를 왔다 갔다 하며 지운다 */
 .atk-eraser {
   position: absolute; top: 50%; right: -10px; width: 46px; height: 46px; margin-top: -32px;
@@ -1140,7 +1147,7 @@ html { touch-action: manipulation; }
 .atk-target { margin: 6px 0 10px; }
 /* 공격 대상: 고른 사람 표시 */
 .attack-target { position: relative; }
-.attack-target[aria-pressed="true"] { background: var(--signal-red); color: #fff; }
-.attack-target .ck { margin-left: auto; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--signal-red); }
-.attack-target[aria-pressed="true"] .ck { border-color: #fff; background: #fff; box-shadow: inset 0 0 0 4px var(--signal-red); }
+.attack-target[aria-pressed="true"] { border-color: var(--signal-red); background: #ffe6e3; color: #a3241b; }
+.attack-target .ck { margin-left: auto; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); }
+.attack-target[aria-pressed="true"] .ck { border-color: var(--signal-red); box-shadow: inset 0 0 0 5px var(--signal-red); }
 #attack-go:disabled { opacity: .4; }

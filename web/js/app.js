@@ -502,10 +502,17 @@ function playAttack(view, ev) {
       row.classList.add('erasing');
       if (targetMe) haptic?.('heavy');
       attackTimer = setTimeout(() => {
-        row.classList.add('erased');
         eraser.remove();
         const cname = CATEGORY_INFO[ev.category].name;
-        result.textContent = ev.score === null || ev.score === undefined ? `${cname} 칸을 지웠어요` : `${cname}의 점수를 지웠어요`;
+        if (ev.score === null || ev.score === undefined) {
+          // 빈 칸: 지울 점수가 없다
+          row.classList.remove('erasing');
+          row.querySelector('.vl').append(el('span', 'atk-none', '!'));
+          result.textContent = '지울 점수가 없어요';
+        } else {
+          row.classList.add('erased');
+          result.textContent = `${cname}의 점수를 지웠어요`;
+        }
         show.classList.add('done');
         attackTimer = setTimeout(() => {
           show.hidden = true;
