@@ -20,7 +20,7 @@ import {
   onAccountChange, refreshMe, saveProfile, updatePoints,
 } from './account.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
-import { DOUBLE_DAILY_LIMIT, ITEM_BUY_COST, JEERS, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
+import { DOUBLE_DAILY_LIMIT, JEERS, itemBuyCost, NICKNAME_CHANGE_COST, scorePoints } from './points.js';
 import { fillAds, prepareRewarded, rewardedAvailable, startNativeAds, watchRewarded } from './ads.js';
 import { haptic, inApp, native, share } from './native.js';
 import { offerApp } from './openapp.js';
@@ -73,7 +73,7 @@ for (const overlay of document.querySelectorAll('.overlay')) {
       nudgeResult();
       return;
     }
-    if (ev.target === overlay && overlay.id !== 'result' && overlay.id !== 'att') closeOverlay(overlay.id);
+    if (ev.target === overlay && overlay.id !== 'result' && overlay.id !== 'att' && overlay.id !== 'attack-show') closeOverlay(overlay.id);
     if (ev.target.closest('[data-close]')) closeOverlay(overlay.id);
   });
 }
@@ -149,12 +149,14 @@ function setUrlRoom(code) {
   }
   const list = $('item-rules');
   for (const it of GAME_ITEMS) {
-    const li = el('li');
+    const li = el('li', it.attack ? 'atk' : '');
     li.append(itemIcon(it.id), el('b', '', it.full), el('span', '', it.desc));
     list.append(li);
   }
   for (const box of document.querySelectorAll('[data-item-icons]')) {
-    for (const it of GAME_ITEMS) box.append(itemIcon(it.id));
+    // 혼자 하기에는 공격 아이템이 없다
+    const solo = box.dataset.itemIcons === 'solo';
+    for (const it of GAME_ITEMS) if (!(solo && it.attack)) box.append(itemIcon(it.id, `item-ic${it.attack ? ' atk' : ''}`));
   }
 })();
 for (const btn of document.querySelectorAll('[data-open="rules"]')) {
@@ -394,6 +396,11 @@ function onItem(id) {
   }
   ui.armed = null;
   ui.eraseArmed = null;
+  if (id === 'attack') {
+    ui.itemMode = null;
+    pickAttackTarget(m.items.targets ?? []);
+    return;
+  }
   if (id === 'reroll') {
     ui.itemMode = null;
     if (ui.kind === 'solo') soloItemAction('reroll');
@@ -405,6 +412,102 @@ function onItem(id) {
   renderGame(m);
 }
 
+/** 공격: 누구를 공격할지 고른다 (한 명뿐이어도 한 번 확인) */
+function pickAttackTarget(targets) {
+  const box = $('attack-targets');
+  box.replaceChildren();
+  for (const t of targets) {
+    const b = el('button', 'attack-target');
+    b.type = 'button';
+    b.append(miniAvatar(t.avatar, 40), el('span', 'nm', t.name));
+    b.addEventListener('click', () => {
+      closeOverlay('attack-pick');
+      if (!ui.model?.items?.can.attack) return;
+      room.conn?.send({ type: 'item', item: 'attack', target: t.seat });
+      haptic?.('medium');
+    });
+    box.append(b);
+  }
+  openOverlay('attack-pick');
+}
+
+/**
+ * 공격 연출: 모두의 화면에 크게, 공격받는 사람의 12칸을 띄우고 무작위로 돌다가 걸린 칸을 지운다.
+ * 서버가 이미 칸을 골라 지운 뒤라, 화면은 그 칸에서 멈추도록 돌기만 한다.
+ */
+let attackTimer = null;
+function playAttack(view, ev) {
+  const nameOf = (seat) => (seat === view.you ? '나' : view.players[seat]?.name ?? '');
+  const sheet = view.game.sheets.find((s) => s.seat === ev.targetSeat)?.scores ?? {};
+  const scores = { ...sheet };
+  if (ev.score !== null && ev.score !== undefined) scores[ev.category] = ev.score; // 지워지기 전 점수로 보여 준다
+  const targetMe = ev.targetSeat === view.you;
+
+  $('atk-title').replaceChildren(itemIcon('attack'), el('span', '', ev.seat === view.you ? '공격!' : `${nameOf(ev.seat)}의 공격!`));
+  const tgt = $('atk-target');
+  tgt.replaceChildren(miniAvatar(view.players[ev.targetSeat]?.avatar, 44), el('span', 'nm', targetMe ? '내 점수판' : nameOf(ev.targetSeat)));
+  const grid = $('atk-grid');
+  grid.replaceChildren();
+  const cells = CATEGORIES.map((cat) => {
+    const c = el('div', `atk-cell${scores[cat] === undefined ? ' empty' : ''}`);
+    c.append(el('span', 'lb', CATEGORY_INFO[cat].name), el('span', 'vl', scores[cat] === undefined ? '' : String(scores[cat])));
+    grid.append(c);
+    return c;
+  });
+  const result = $('atk-result');
+  result.textContent = '';
+  result.className = 'atk-result';
+  const show = $('attack-show');
+  show.classList.remove('done');
+  show.hidden = false;
+  clearTimeout(attackTimer);
+
+  // 띠리리리: 처음엔 빠르게, 점점 느려지며 걸린 칸에서 멈춘다
+  const final = CATEGORIES.indexOf(ev.category);
+  const start = Math.floor(Math.random() * CATEGORIES.length);
+  const steps = CATEGORIES.length * 2 + ((final - start + CATEGORIES.length) % CATEGORIES.length);
+  let i = 0;
+  const tick = () => {
+    cells.forEach((c) => c.classList.remove('hit'));
+    const idx = (start + i) % CATEGORIES.length;
+    cells[idx].classList.add('hit');
+    if (i < steps) {
+      i += 1;
+      const t = i / steps;
+      attackTimer = setTimeout(tick, 40 + 180 * t * t * t);
+      return;
+    }
+    // 멈춤
+    const cell = cells[final];
+    cell.classList.add('picked');
+    show.classList.add('done');
+    const name = CATEGORY_INFO[ev.category].name;
+    if (ev.score === null || ev.score === undefined) {
+      result.textContent = `${name}: 빈 칸이라 꽝!`;
+      result.classList.add('miss');
+    } else if (ev.score === 0) {
+      cell.classList.add('erased');
+      result.textContent = `${name} 0점 칸이 비워졌어요. 오히려 다시 채울 기회!`;
+      result.classList.add('miss');
+    } else {
+      cell.classList.add('erased');
+      result.textContent = `${name} ${ev.score}점이 지워졌어요!`;
+      result.classList.add('hit');
+      if (targetMe) haptic?.('heavy');
+    }
+    attackTimer = setTimeout(() => {
+      show.hidden = true;
+    }, 2200);
+  };
+  tick();
+}
+$('attack-show').addEventListener('click', () => {
+  if ($('attack-show').classList.contains('done')) {
+    clearTimeout(attackTimer);
+    $('attack-show').hidden = true;
+  }
+});
+
 /** 다 쓴 아이템을 포인트로 한 번 더 산다 (로그인한 사람만, 한 판에 종류별로 한 번). */
 function onBuy(id) {
   const it = GAME_ITEM[id];
@@ -414,12 +517,13 @@ function onBuy(id) {
     return;
   }
   const points = me.points ?? 0;
-  if (points < ITEM_BUY_COST) {
-    toast(`포인트가 부족해요 (${points}P / ${ITEM_BUY_COST}P)`);
+  const cost = itemBuyCost(id);
+  if (points < cost) {
+    toast(`포인트가 부족해요 (${points}P / ${cost}P)`);
     return;
   }
   confirmExit(
-    `${it.full}를 ${ITEM_BUY_COST}포인트로 한 번 더 살까요? 한 판에 한 번만 살 수 있어요.\n\n지금 ${points}포인트 → 산 뒤 ${points - ITEM_BUY_COST}포인트`,
+    `${it.full}를 ${cost}포인트로 한 번 더 살까요? 한 판에 한 번만 살 수 있어요.\n\n지금 ${points}포인트 → 산 뒤 ${points - cost}포인트`,
     () => {
       if (ui.kind !== 'solo') {
         room.conn?.send({ type: 'buy', item: id });
@@ -428,10 +532,10 @@ function onBuy(id) {
       soloAction(async () => {
         const balance = await solo.buy(id);
         if (typeof balance === 'number') updatePoints(balance);
-        toast(`${it.full}를 샀어요 (-${ITEM_BUY_COST}P)`);
+        toast(`${it.full}를 샀어요 (-${cost}P)`);
       });
     },
-    `${ITEM_BUY_COST}P로 사기`,
+    `${cost}P로 사기`,
     { cancelText: '취소', danger: false },
   );
 }
@@ -477,16 +581,18 @@ function renderItemBar(m) {
   }
   bar.hidden = false;
   bar.replaceChildren();
-  for (const it of GAME_ITEMS) {
+  const kinds = GAME_ITEMS.filter((it) => it.id in m.items.mine);
+  bar.style.setProperty('--item-cols', String(kinds.length));
+  for (const it of kinds) {
     const left = m.items.mine[it.id] ?? 0;
-    const b = el('button', 'item-btn');
+    const b = el('button', `item-btn${it.attack ? ' attack' : ''}`);
     b.type = 'button';
     b.append(itemIcon(it.id), el('span', 'item-nm', it.name));
     // 다 쓴 아이템: 한 판에 한 번 포인트로 더 살 수 있다
     const buyable = left <= 0 && !m.items.bought[it.id] && m.items.canBuy;
     if (buyable) {
       b.classList.add('buy');
-      b.append(el('span', 'item-ct', `${ITEM_BUY_COST}P`));
+      b.append(el('span', 'item-ct', `${itemBuyCost(it.id)}P`));
     } else if (left <= 0) {
       b.classList.add('used');
       b.append(el('span', 'item-ct', '씀'));
@@ -497,7 +603,7 @@ function renderItemBar(m) {
     b.classList.toggle('ready', usable);
     b.classList.toggle('active', ui.itemMode === it.id);
     b.setAttribute('aria-pressed', String(ui.itemMode === it.id));
-    b.setAttribute('aria-label', buyable ? `${it.full} ${ITEM_BUY_COST}포인트로 한 번 더 사기` : `${it.full} ${left > 0 ? `${left}개 남음` : '다 씀'}`);
+    b.setAttribute('aria-label', buyable ? `${it.full} ${itemBuyCost(it.id)}포인트로 한 번 더 사기` : `${it.full} ${left > 0 ? `${left}개 남음` : '다 씀'}`);
     b.disabled = buyable ? false : left <= 0 || !m.items.myTurn || m.finished;
     b.addEventListener('click', () => (buyable ? onBuy(it.id) : onItem(it.id)));
     bar.append(b);
@@ -1031,8 +1137,8 @@ function renderSheet(m, rolling = false) {
     if (c.items) {
       // 아이템전: 남은 아이템을 작은 아이콘으로 (쓴 것은 흐리게)
       const row = el('span', 'it-mini');
-      for (const it of GAME_ITEMS) {
-        const ic = itemIcon(it.id, 'it-dot');
+      for (const it of GAME_ITEMS.filter((x) => x.id in c.items)) {
+        const ic = itemIcon(it.id, `it-dot${it.attack ? ' atk' : ''}`);
         if (!c.items[it.id]) ic.classList.add('gone');
         row.append(ic);
       }
@@ -1521,7 +1627,7 @@ async function loadRanking(period) {
     if (e.items) {
       dt.classList.add('with-items');
       const ic = el('span', 'rank-items');
-      for (const it of GAME_ITEMS) ic.append(itemIcon(it.id, 'it-dot'));
+      for (const it of GAME_ITEMS) if (!it.attack) ic.append(itemIcon(it.id, 'it-dot'));
       ic.title = '아이템전 기록';
       ic.setAttribute('aria-label', '아이템전');
       dt.append(ic);
@@ -1850,7 +1956,8 @@ function onRoomState(view) {
         const { seat, item, category, index, from, to, bought } = g.lastItem;
         const mine = seat === view.you;
         const who = mine ? '' : `${nameOf(seat)}: `;
-        if (bought) toast(mine ? `${GAME_ITEM[item].full}를 샀어요 (-${ITEM_BUY_COST}P)` : `${who}포인트로 ${GAME_ITEM[item].full}를 한 번 더 샀어요`);
+        if (bought) toast(mine ? `${GAME_ITEM[item].full}를 샀어요 (-${itemBuyCost(item)}P)` : `${who}포인트로 ${GAME_ITEM[item].full}를 한 번 더 샀어요`);
+        else if (item === 'attack') playAttack(view, g.lastItem);
         else if (item === 'reroll') toast(mine ? '한 번 더 굴릴 수 있어요' : `${who}한 번 더 굴리기!`);
         else if (item === 'erase') toast(mine ? `${CATEGORY_INFO[category].name} 칸을 지웠어요. 나중에 다시 채울 수 있어요` : `${who}칸 지우기로 ${CATEGORY_INFO[category].name} 칸을 지웠어요`);
         else if (item === 'flip') {
@@ -1985,11 +2092,20 @@ function itemModel(view, g, myTurn) {
   const sheet = g.sheets.find((s) => s.seat === view.you)?.scores ?? {};
   const bought = g.items.find((it) => it.seat === view.you)?.bought ?? {};
   const canBuy = view.phase === 'playing' && filledCount(sheet) < CATEGORIES.length && !view.players[view.you]?.left;
-  return itemState({ mine, sheet, bought, canBuy, rollsLeft: g.rollsLeft, myTurn });
+  // 공격할 수 있는 상대: 나·같은 팀·기권한 사람 제외
+  const meP = view.players[view.you];
+  const targets = g.sheets
+    .map((s) => s.seat)
+    .filter((seat) => {
+      const p = view.players[seat];
+      return seat !== view.you && p && !p.left && (p.team === null || p.team === undefined || p.team !== meP?.team);
+    })
+    .map((seat) => ({ seat, name: view.players[seat].name, avatar: view.players[seat].avatar }));
+  return { ...itemState({ mine, sheet, bought, canBuy, rollsLeft: g.rollsLeft, myTurn, hasTarget: targets.length > 0 }), targets };
 }
 
 /** 아이템 버튼 상태 (같이 하기·혼자 하기 공통) */
-function itemState({ mine, sheet, bought, canBuy, rollsLeft, myTurn }) {
+function itemState({ mine, sheet, bought, canBuy, rollsLeft, myTurn, hasTarget = false }) {
   const rolled = rollsLeft < ROLLS_PER_TURN;
   const why = {};
   const can = {};
@@ -2000,6 +2116,7 @@ function itemState({ mine, sheet, bought, canBuy, rollsLeft, myTurn }) {
   check('reroll', rolled && rollsLeft === 0, '세 번 다 굴린 뒤에 쓸 수 있어요');
   check('flip', rolled, '주사위를 굴린 뒤에 쓸 수 있어요');
   check('erase', filledCount(sheet) > 0, '아직 적은 칸이 없어요');
+  if ('attack' in mine) check('attack', hasTarget, '공격할 상대가 없어요');
   return { mine, can, why, myTurn, bought, canBuy };
 }
 
@@ -2032,7 +2149,7 @@ function renderLobbyRule(view) {
   if (view.items) {
     const list = el('ul', 'lr-items');
     for (const it of GAME_ITEMS) {
-      const li = el('li');
+      const li = el('li', it.attack ? 'atk' : '');
       li.append(itemIcon(it.id), el('b', '', it.full), el('span', '', it.desc));
       list.append(li);
     }

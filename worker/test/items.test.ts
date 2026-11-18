@@ -16,7 +16,7 @@ const cur = (s: RoomState) => s.game!.order[s.game!.turn];
 describe('아이템전', () => {
   it('시작할 때 종류별로 하나씩 받는다', () => {
     const { s } = itemRoom();
-    for (const id of s.game!.order) expect(s.game!.items![id]).toEqual({ reroll: 1, erase: 1, flip: 1 });
+    for (const id of s.game!.order) expect(s.game!.items![id]).toEqual({ reroll: 1, erase: 1, flip: 1, attack: 1 });
     expect(viewFor(s, 'p0', T0).items).toBe(true);
   });
 
@@ -145,5 +145,48 @@ describe('혼자 하기 아이템전', async () => {
     expect(isFinished(s)).toBe(false);
     s = soloScore(soloRoll(s, null, first), 'ones');
     expect(isFinished(s)).toBe(true);
+  });
+});
+
+describe('공격: 상대 칸 지우기', () => {
+  it('상대 12칸 중 하나를 무작위로 지운다 (빈 칸이면 아무 일 없음)', () => {
+    const { s, ids } = itemRoom();
+    const me = cur(s);
+    const other = ids.find((x) => x !== me)!;
+    const otherSeat = s.players.findIndex((p) => p.id === other);
+    const mySeat = s.players.findIndex((p) => p.id === me);
+    expect(() => useItem(s, me, 'attack', mySeat, T0, first)).toThrow('나는 공격할 수 없어요');
+    // 상대 에이스(첫 칸)에 점수를 적어 둔다
+    s.game!.sheets[other].ones = 3;
+    useItem(s, me, 'attack', otherSeat, T0, () => 0); // 0 → 첫 칸(ones)
+    expect(s.game!.sheets[other].ones).toBeUndefined();
+    expect(s.game!.lastItem).toMatchObject({ item: 'attack', targetId: other, category: 'ones', score: 3 });
+    expect(viewFor(s, me, T0).game!.lastItem).toMatchObject({ targetSeat: otherSeat });
+    expect(() => useItem(s, me, 'attack', otherSeat, T0, first)).toThrow('이미 쓴');
+  });
+
+  it('빈 칸이 걸리면 아무것도 지우지 않는다', () => {
+    const { s, ids } = itemRoom();
+    const me = cur(s);
+    const other = ids.find((x) => x !== me)!;
+    useItem(s, me, 'attack', s.players.findIndex((p) => p.id === other), T0, () => 0.99); // 마지막 칸(yacht), 비어 있음
+    expect(s.game!.lastItem).toMatchObject({ item: 'attack', category: 'yacht' });
+    expect(s.game!.lastItem!.score).toBeUndefined();
+  });
+
+  it('2:2에서 같은 팀은 공격할 수 없다', () => {
+    const s = createRoom('K7Q2', '2v2', T0, true);
+    const ids = [0, 1, 2, 3].map((i) => join(s, { name: `P${i}`, newId: `p${i}` }, T0));
+    start(s, ids[0], T0, first);
+    const me = cur(s);
+    const meP = s.players.find((p) => p.id === me)!;
+    const mate = s.players.findIndex((p) => p.id !== me && p.team === meP.team);
+    expect(() => useItem(s, me, 'attack', mate, T0, first)).toThrow('같은 팀');
+  });
+
+  it('혼자 하기에서는 없다', async () => {
+    const { newSolo, soloRoll, soloItem } = await import('../src/solo');
+    expect(newSolo(true).items).toEqual({ reroll: 1, erase: 1, flip: 1 });
+    expect(() => soloItem(soloRoll(newSolo(true), null, first), 'attack', 1)).toThrow('같이 하기에서만');
   });
 });

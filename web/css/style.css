@@ -1066,3 +1066,57 @@ html { touch-action: manipulation; }
 .rank-items .it-dot { display: block; width: 12px; height: 12px; }
 .rank-items .it-dot svg { display: block; }
 .rank-list .dt.with-items { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+
+/* ---------- 공격 아이템 (빨간 계열) ---------- */
+.item-bar { grid-template-columns: repeat(var(--item-cols, 3), minmax(0, 1fr)); gap: 6px; }
+.item-btn.attack { border-color: color-mix(in srgb, var(--signal-red) 45%, var(--line)); background: color-mix(in srgb, var(--signal-red) 7%, var(--paper)); color: #a3241b; }
+.item-btn.attack .item-ic { color: var(--signal-red); }
+.item-btn.attack .item-ct { background: var(--signal-red); }
+.item-btn.attack.ready { border-color: var(--signal-red); box-shadow: 0 3px 0 #a3241b; background: color-mix(in srgb, var(--signal-red) 12%, var(--paper)); }
+.item-btn.attack.buy { border-color: var(--signal-red); color: #a3241b; }
+.item-btn.attack.buy .item-ct { background: var(--signal-red); }
+.lr-items li.atk .item-ic, .item-rules li.atk .item-ic { background: var(--signal-red); color: #fff; }
+.lr-items li.atk b, .item-rules li.atk b { color: #c23126; }
+.rule-icons .item-ic.atk { color: var(--signal-red); }
+.it-dot.atk { color: var(--signal-red); }
+
+/* 누구를 공격할지 */
+.attack-pick-card h2 { margin: 0 0 6px; font-family: var(--display); font-weight: 400; font-size: 24px; text-align: center; color: #c23126; }
+.attack-pick-note { margin: 0 0 14px; font-size: 13px; color: var(--ink-soft); text-align: center; line-height: 1.5; }
+.attack-targets { display: grid; gap: 8px; margin-bottom: 12px; }
+.attack-target {
+  display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 14px;
+  border: 2px solid var(--signal-red); border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--signal-red) 6%, var(--paper)); color: var(--ink);
+  font: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
+}
+.attack-target:active { transform: translateY(2px); }
+
+/* 공격 연출 */
+.attack-show { background: rgba(60, 8, 6, .72); }
+.attack-card {
+  width: min(360px, calc(100% - 32px)); padding: 18px 16px 16px; border-radius: 22px;
+  background: var(--paper); box-shadow: 0 0 0 4px var(--signal-red), 0 20px 60px rgba(0, 0, 0, .45);
+  animation: atk-in .28s cubic-bezier(.2, 1.4, .4, 1);
+}
+@keyframes atk-in { from { transform: scale(.7); opacity: 0; } }
+.atk-title { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; color: #c23126; font-family: var(--display); font-size: 26px; }
+.atk-title .item-ic { width: 28px; height: 28px; }
+.atk-target { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0 12px; font-weight: 700; font-size: 18px; }
+.atk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.atk-cell {
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+  min-height: 38px; padding: 0 10px; border-radius: 10px;
+  background: var(--sail); border: 2px solid transparent; font-size: 14px;
+  transition: background .06s, transform .06s;
+}
+.atk-cell .vl { font-family: var(--display); font-size: 19px; }
+.atk-cell.empty .lb { color: var(--ink-soft); }
+.atk-cell.hit { background: #ffd9d5; border-color: var(--signal-red); transform: scale(1.04); }
+.atk-cell.picked { background: var(--signal-red); color: #fff; border-color: #a3241b; animation: atk-pick .5s ease 2; }
+.atk-cell.picked .lb { color: #fff; }
+.atk-cell.erased .vl { text-decoration: line-through; text-decoration-thickness: 3px; }
+@keyframes atk-pick { 50% { transform: scale(1.12); } }
+.atk-result { min-height: 26px; margin: 12px 0 0; text-align: center; font-weight: 800; font-size: 18px; }
+.atk-result.hit { color: #c23126; }
+.atk-result.miss { color: var(--kelp); }

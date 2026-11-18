@@ -37,6 +37,15 @@ export const DOUBLE_DAILY_LIMIT = 5;
 
 /** 아이템전: 다 쓴 아이템을 한 번 더 사는 값 (한 판에 종류별로 한 번까지) */
 export const ITEM_BUY_COST = 50;
+/** 공격 아이템은 더 비싸다 */
+export const ATTACK_BUY_COST = 100;
+
+/** 아이템 종류별로 다시 사는 값
+ * @param {unknown} kind
+ */
+export function itemBuyCost(kind) {
+  return kind === 'attack' ? ATTACK_BUY_COST : ITEM_BUY_COST;
+}
 
 /** @type {Record<string, { name: string, short: string, cost: number, verb: string }>} 관전자 야유 (쓸 때마다 포인트 차감) */
 export const JEERS = {

@@ -20,9 +20,9 @@ export interface SoloState {
   rollsLeft: number;
   rollSeq: number;
   /** 아이템전: 남은 아이템. 기본전이면 없음. (규칙은 같이 하기와 같다) */
-  items?: ItemCounts | null;
+  items?: Partial<ItemCounts> | null;
   /** 포인트로 한 번 더 산 아이템 (한 판에 종류별로 한 번) */
-  bought?: ItemCounts;
+  bought?: Partial<ItemCounts>;
   /** 이번 차례에 '한 번 더 굴리기'를 썼다 */
   bonusRoll?: boolean;
 }
@@ -101,9 +101,10 @@ export function soloItem(state: SoloState, item: unknown, arg: unknown): SoloSta
   if (isFinished(state)) throw new SoloError('이미 끝난 게임이에요');
   if (!state.items) throw new SoloError('아이템전이 아니에요');
   const kind = itemKind(item);
-  if (state.items[kind] <= 0) throw new SoloError('이미 쓴 아이템이에요');
+  if (kind === 'attack') throw new SoloError('공격 아이템은 같이 하기에서만 쓸 수 있어요');
+  if (!((state.items[kind] ?? 0) > 0)) throw new SoloError('이미 쓴 아이템이에요');
   const rolled = state.rollsLeft < ROLLS_PER_TURN;
-  const next: SoloState = { ...state, items: { ...state.items, [kind]: state.items[kind] - 1 } };
+  const next: SoloState = { ...state, items: { ...state.items, [kind]: (state.items[kind] ?? 0) - 1 } };
   if (kind === 'reroll') {
     if (!rolled || state.rollsLeft > 0) throw new SoloError('세 번 다 굴린 뒤에 쓸 수 있어요');
     next.rollsLeft = 1;
@@ -129,11 +130,12 @@ export function soloBuy(state: SoloState, item: unknown): SoloState {
   if (isFinished(state)) throw new SoloError('이미 끝난 게임이에요');
   if (!state.items) throw new SoloError('아이템전이 아니에요');
   const kind = itemKind(item);
-  if (state.items[kind] > 0) throw new SoloError('아직 남아 있는 아이템이에요');
+  if (kind === 'attack') throw new SoloError('공격 아이템은 같이 하기에서만 쓸 수 있어요');
+  if ((state.items[kind] ?? 0) > 0) throw new SoloError('아직 남아 있는 아이템이에요');
   if (state.bought?.[kind]) throw new SoloError('이번 판에는 이미 한 번 샀어요');
   return {
     ...state,
-    items: { ...state.items, [kind]: state.items[kind] + 1 },
+    items: { ...state.items, [kind]: (state.items[kind] ?? 0) + 1 },
     bought: { ...(state.bought ?? { reroll: 0, erase: 0, flip: 0 }), [kind]: 1 },
   };
 }

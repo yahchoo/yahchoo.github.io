@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { grantPoints, spendPoints, userFromToken } from './account';
-import { ITEM_BUY_COST, JEERS } from '../../web/js/points.js';
+import { JEERS, itemBuyCost } from '../../web/js/points.js';
 import { parseAvatar } from '../../web/js/avatar.js';
 import {
   RoomError,
@@ -362,9 +362,10 @@ export class YachtRoom extends DurableObject<Env> {
         }
         throw err;
       }
-      const ok = await spendPoints(this.env, userId, ITEM_BUY_COST, 'item');
+      const cost = itemBuyCost(item);
+      const ok = await spendPoints(this.env, userId, cost, 'item');
       if (!ok) {
-        YachtRoom.sendError(ws, `포인트가 부족해요. 아이템은 ${ITEM_BUY_COST}포인트예요`);
+        YachtRoom.sendError(ws, `포인트가 부족해요. 이 아이템은 ${cost}포인트예요`);
         return;
       }
       let granted = false;
@@ -382,7 +383,7 @@ export class YachtRoom extends DurableObject<Env> {
         await this.save(s);
         this.broadcast(s);
       });
-      if (!granted) await grantPoints(this.env, userId, ITEM_BUY_COST, 'item_refund', crypto.randomUUID());
+      if (!granted) await grantPoints(this.env, userId, cost, 'item_refund', crypto.randomUUID());
       const row = await this.env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(userId).first<{ points: number }>();
       try {
         ws.send(JSON.stringify({ type: 'balance', points: row?.points ?? 0 }));
@@ -436,7 +437,14 @@ export class YachtRoom extends DurableObject<Env> {
           score(state, playerId, data.category, now);
           break;
         case 'item':
-          useItem(state, playerId, data.item, data.item === 'flip' ? data.index : data.category, now);
+          useItem(
+            state,
+            playerId,
+            data.item,
+            data.item === 'flip' ? data.index : data.item === 'attack' ? data.target : data.category,
+            now,
+            secureRandom,
+          );
           break;
         case 'items':
           setItems(state, playerId, data.on, now);
