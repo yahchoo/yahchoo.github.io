@@ -86,7 +86,8 @@ jobs:
           ./gradlew --no-daemon bundleRelease
           mkdir -p ../out
           cp app/build/outputs/bundle/release/app-release.aab "../out/yahchoo-$BUILD_NUMBER.aab"
-          echo "::notice title=빌드::버전 1.0.0 ($BUILD_NUMBER) 서명된 AAB 완료. 아래 Artifacts에서 받으세요"
+          VER=$(grep -oE 'versionName "[^"]+"' app/build.gradle | cut -d'"' -f2)
+          echo "::notice title=빌드::버전 $VER ($BUILD_NUMBER) 서명된 AAB 완료. 아래 Artifacts에서 받으세요"
 
       - name: 빌드 (디버그)
         if: steps.key.outputs.signed != 'true'
