@@ -412,28 +412,43 @@ function onItem(id) {
   renderGame(m);
 }
 
-/** 공격: 누구를 공격할지 고른다 (한 명뿐이어도 한 번 확인) */
+/** 공격: 상대를 고르고 '공격!'을 눌러야 시작한다 (한 명뿐이면 미리 골라 둔다) */
+let attackChoice = null;
 function pickAttackTarget(targets) {
   const box = $('attack-targets');
   box.replaceChildren();
+  attackChoice = targets.length === 1 ? targets[0].seat : null;
+  const go = $('attack-go');
+  const paint = () => {
+    for (const b of box.children) b.setAttribute('aria-pressed', String(Number(b.dataset.seat) === attackChoice));
+    go.disabled = attackChoice === null;
+  };
   for (const t of targets) {
     const b = el('button', 'attack-target');
     b.type = 'button';
-    b.append(miniAvatar(t.avatar, 40), el('span', 'nm', t.name));
+    b.dataset.seat = String(t.seat);
+    b.append(miniAvatar(t.avatar, 40), el('span', 'nm', t.name), el('span', 'ck'));
     b.addEventListener('click', () => {
-      closeOverlay('attack-pick');
-      if (!ui.model?.items?.can.attack) return;
-      room.conn?.send({ type: 'item', item: 'attack', target: t.seat });
-      haptic?.('medium');
+      attackChoice = t.seat;
+      paint();
     });
     box.append(b);
   }
+  paint();
   openOverlay('attack-pick');
 }
+$('attack-go').addEventListener('click', () => {
+  if (attackChoice === null) return;
+  closeOverlay('attack-pick');
+  if (!ui.model?.items?.can.attack) return;
+  room.conn?.send({ type: 'item', item: 'attack', target: attackChoice });
+  haptic?.('medium');
+});
 
 /**
- * 공격 연출: 모두의 화면에 크게, 공격받는 사람의 12칸을 띄우고 무작위로 돌다가 걸린 칸을 지운다.
- * 서버가 이미 칸을 골라 지운 뒤라, 화면은 그 칸에서 멈추도록 돌기만 한다.
+ * 공격 연출 (같이 하는 사람·관전자 모두): 공격받는 사람의 점수판 12칸을 한 줄씩 띄우고,
+ * 빨간 표시가 위아래로 돌다가 점점 느려지며 한 칸에서 멈춘 뒤 지우개가 그 칸 점수를 지운다.
+ * 칸은 서버가 이미 골라 지운 뒤라, 화면은 그 칸에서 멈추도록 돌기만 한다.
  */
 let attackTimer = null;
 function playAttack(view, ev) {
@@ -444,60 +459,59 @@ function playAttack(view, ev) {
   const targetMe = ev.targetSeat === view.you;
 
   $('atk-title').replaceChildren(itemIcon('attack'), el('span', '', ev.seat === view.you ? '공격!' : `${nameOf(ev.seat)}의 공격!`));
-  const tgt = $('atk-target');
-  tgt.replaceChildren(miniAvatar(view.players[ev.targetSeat]?.avatar, 44), el('span', 'nm', targetMe ? '내 점수판' : nameOf(ev.targetSeat)));
-  const grid = $('atk-grid');
-  grid.replaceChildren();
-  const cells = CATEGORIES.map((cat) => {
-    const c = el('div', `atk-cell${scores[cat] === undefined ? ' empty' : ''}`);
-    c.append(el('span', 'lb', CATEGORY_INFO[cat].name), el('span', 'vl', scores[cat] === undefined ? '' : String(scores[cat])));
-    grid.append(c);
-    return c;
+  $('atk-target').replaceChildren(
+    miniAvatar(view.players[ev.targetSeat]?.avatar, 40),
+    el('span', 'nm', targetMe ? '내 점수판' : `${nameOf(ev.targetSeat)}의 점수판`),
+  );
+  const list = $('atk-list');
+  list.replaceChildren();
+  const rows = CATEGORIES.map((cat, i) => {
+    const r = el('div', `atk-row${i === 6 ? ' lower-start' : ''}`);
+    r.append(el('span', 'lb', CATEGORY_INFO[cat].name), el('span', 'vl', scores[cat] === undefined ? '' : String(scores[cat])));
+    list.append(r);
+    return r;
   });
   const result = $('atk-result');
   result.textContent = '';
-  result.className = 'atk-result';
   const show = $('attack-show');
   show.classList.remove('done');
   show.hidden = false;
   clearTimeout(attackTimer);
 
-  // 띠리리리: 처음엔 빠르게, 점점 느려지며 걸린 칸에서 멈춘다
+  // 띠리리리: 위에서 아래로 빠르게 돌다가 점점 느려지며 걸린 칸에서 멈춘다 (약 3초)
   const final = CATEGORIES.indexOf(ev.category);
   const start = Math.floor(Math.random() * CATEGORIES.length);
   const steps = CATEGORIES.length * 2 + ((final - start + CATEGORIES.length) % CATEGORIES.length);
   let i = 0;
   const tick = () => {
-    cells.forEach((c) => c.classList.remove('hit'));
-    const idx = (start + i) % CATEGORIES.length;
-    cells[idx].classList.add('hit');
+    rows.forEach((r) => r.classList.remove('hit'));
+    rows[(start + i) % CATEGORIES.length].classList.add('hit');
     if (i < steps) {
       i += 1;
       const t = i / steps;
       attackTimer = setTimeout(tick, 40 + 180 * t * t * t);
       return;
     }
-    // 멈춤
-    const cell = cells[final];
-    cell.classList.add('picked');
-    show.classList.add('done');
-    const name = CATEGORY_INFO[ev.category].name;
-    if (ev.score === null || ev.score === undefined) {
-      result.textContent = `${name}: 빈 칸이라 꽝!`;
-      result.classList.add('miss');
-    } else if (ev.score === 0) {
-      cell.classList.add('erased');
-      result.textContent = `${name} 0점 칸이 비워졌어요. 오히려 다시 채울 기회!`;
-      result.classList.add('miss');
-    } else {
-      cell.classList.add('erased');
-      result.textContent = `${name} ${ev.score}점이 지워졌어요!`;
-      result.classList.add('hit');
-      if (targetMe) haptic?.('heavy');
-    }
+    // 멈춤 → 지우개
+    const row = rows[final];
+    row.classList.remove('hit');
+    row.classList.add('picked');
     attackTimer = setTimeout(() => {
-      show.hidden = true;
-    }, 2200);
+      const eraser = itemIcon('erase', 'atk-eraser');
+      row.querySelector('.vl').append(eraser);
+      row.classList.add('erasing');
+      if (targetMe) haptic?.('heavy');
+      attackTimer = setTimeout(() => {
+        row.classList.add('erased');
+        eraser.remove();
+        const cname = CATEGORY_INFO[ev.category].name;
+        result.textContent = ev.score === null || ev.score === undefined ? `${cname} 칸을 지웠어요` : `${cname}의 점수를 지웠어요`;
+        show.classList.add('done');
+        attackTimer = setTimeout(() => {
+          show.hidden = true;
+        }, 2000);
+      }, 1100);
+    }, 450);
   };
   tick();
 }

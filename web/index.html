@@ -325,9 +325,12 @@
   <div class="overlay" id="attack-pick" hidden>
     <div class="sheet-card attack-pick-card" role="dialog" aria-modal="true" aria-labelledby="attack-pick-title">
       <h2 id="attack-pick-title">누구를 공격할까요?</h2>
-      <p class="attack-pick-note">고른 사람의 12칸 중 하나가 무작위로 지워져요. 빈 칸이 걸리면 꽝이에요.</p>
+      <p class="attack-pick-note">공격할 사람을 고르고 공격을 누르면, 그 사람의 12칸 중 하나가 무작위로 지워져요.</p>
       <div class="attack-targets" id="attack-targets"></div>
-      <button class="btn btn-ghost wide" data-close>취소</button>
+      <div class="result-actions">
+        <button class="btn btn-ghost" data-close>취소</button>
+        <button class="btn btn-danger" id="attack-go" disabled>공격!</button>
+      </div>
     </div>
   </div>
 
@@ -336,7 +339,7 @@
     <div class="attack-card" role="dialog" aria-modal="true" aria-labelledby="atk-title">
       <p class="atk-title" id="atk-title"></p>
       <div class="atk-target" id="atk-target"></div>
-      <div class="atk-grid" id="atk-grid"></div>
+      <div class="atk-list" id="atk-list"></div>
       <p class="atk-result" id="atk-result" aria-live="assertive"></p>
     </div>
   </div>

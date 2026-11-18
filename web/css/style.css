@@ -1103,20 +1103,44 @@ html { touch-action: manipulation; }
 .atk-title { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; color: #c23126; font-family: var(--display); font-size: 26px; }
 .atk-title .item-ic { width: 28px; height: 28px; }
 .atk-target { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0 12px; font-weight: 700; font-size: 18px; }
-.atk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.atk-cell {
-  display: flex; justify-content: space-between; align-items: center; gap: 6px;
-  min-height: 38px; padding: 0 10px; border-radius: 10px;
-  background: var(--sail); border: 2px solid transparent; font-size: 14px;
-  transition: background .06s, transform .06s;
+.atk-list { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--paper); }
+.atk-row {
+  position: relative;
+  display: flex; justify-content: space-between; align-items: center;
+  min-height: 36px; padding: 0 16px; border-bottom: 1px solid var(--line);
+  font-size: 15px; transition: background .05s;
 }
-.atk-cell .vl { font-family: var(--display); font-size: 19px; }
-.atk-cell.empty .lb { color: var(--ink-soft); }
-.atk-cell.hit { background: #ffd9d5; border-color: var(--signal-red); transform: scale(1.04); }
-.atk-cell.picked { background: var(--signal-red); color: #fff; border-color: #a3241b; animation: atk-pick .5s ease 2; }
-.atk-cell.picked .lb { color: #fff; }
-.atk-cell.erased .vl { text-decoration: line-through; text-decoration-thickness: 3px; }
-@keyframes atk-pick { 50% { transform: scale(1.12); } }
-.atk-result { min-height: 26px; margin: 12px 0 0; text-align: center; font-weight: 800; font-size: 18px; }
-.atk-result.hit { color: #c23126; }
-.atk-result.miss { color: var(--kelp); }
+.atk-row:last-child { border-bottom: 0; }
+.atk-row.lower-start { border-top: 2px solid var(--ink); }
+.atk-row .vl { position: relative; min-width: 3ch; text-align: right; font-family: var(--display); font-size: 20px; }
+.atk-row.hit { background: #ffd9d5; box-shadow: inset 4px 0 0 var(--signal-red); }
+.atk-row.picked { background: #ffe3e0; box-shadow: inset 0 0 0 2px var(--signal-red); animation: atk-pick .45s ease 1; }
+@keyframes atk-pick { 50% { transform: scale(1.03); } }
+/* 지우개가 점수 위를 왔다 갔다 하며 지운다 */
+.atk-eraser {
+  position: absolute; top: 50%; right: -10px; width: 46px; height: 46px; margin-top: -32px;
+  color: var(--signal-red); filter: drop-shadow(0 2px 2px rgba(0,0,0,.25));
+  animation: atk-erase 1.05s ease-in-out forwards;
+}
+.atk-eraser svg { width: 100%; height: 100%; fill: #ffc2bb; stroke: #a3241b; stroke-width: 1.8; stroke-linejoin: round; }
+@keyframes atk-erase {
+  0% { transform: translate(0, 0) rotate(-12deg); }
+  15% { transform: translate(-34px, 8px) rotate(-18deg); }
+  30% { transform: translate(6px, 2px) rotate(-6deg); }
+  45% { transform: translate(-34px, 10px) rotate(-18deg); }
+  60% { transform: translate(6px, 4px) rotate(-6deg); }
+  75% { transform: translate(-28px, 10px) rotate(-16deg); }
+  100% { transform: translate(14px, -10px) rotate(0); opacity: 0; }
+}
+.atk-row.erasing .vl { animation: atk-fade 1s steps(4) forwards; }
+@keyframes atk-fade { to { opacity: .15; filter: blur(1.5px); } }
+.atk-row.erased .vl { animation: none; opacity: 0; }
+.atk-result { min-height: 24px; margin: 10px 0 0; text-align: center; font-weight: 800; font-size: 17px; color: #c23126; }
+.attack-show .attack-card { padding: 14px 14px 12px; }
+.atk-target { margin: 6px 0 10px; }
+/* 공격 대상: 고른 사람 표시 */
+.attack-target { position: relative; }
+.attack-target[aria-pressed="true"] { background: var(--signal-red); color: #fff; }
+.attack-target .ck { margin-left: auto; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--signal-red); }
+.attack-target[aria-pressed="true"] .ck { border-color: #fff; background: #fff; box-shadow: inset 0 0 0 4px var(--signal-red); }
+#attack-go:disabled { opacity: .4; }
