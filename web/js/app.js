@@ -468,7 +468,10 @@ function renderGame(m) {
   ui.model = m;
   if (ui.itemMode !== 'flip') ui.flipPick = null;
   $('game-restart').hidden = ui.kind !== 'solo';
-  $('round-now').textContent = String(m.round);
+  // 아이템전에서 칸 지우기로 12턴을 넘기면 '추가 턴'으로 보여 준다
+  const extra = m.round > CATEGORIES.length ? m.round - CATEGORIES.length : 0;
+  $('round-now').textContent = extra ? `+${extra}` : String(m.round);
+  $('round-of').textContent = extra ? '추가 턴' : `/ ${CATEGORIES.length}`;
 
   // 차례 표시
   const turn = $('turn-label');
@@ -1830,7 +1833,8 @@ function onRoomState(view) {
 
   const turnSheet = sheetOf(g.turn);
   const m = {
-    round: finished ? 12 : Math.min(12, (turnSheet ? filledCount(turnSheet.scores) : 0) + 1),
+    // 지금 차례인 사람이 몇 번째 턴인지. 칸 지우기를 쓴 만큼 더한다 (지운 칸은 비어 있으니).
+    round: finished ? 12 : (turnSheet ? filledCount(turnSheet.scores) : 0) + erasesUsed(g, g.turn) + 1,
     turn: finished ? null : { name: nameOf(g.turn), cls: playerCls(view, g.turn), me: myTurn, avatar: view.players[g.turn]?.avatar },
     deadline: finished ? null : g.turnDeadline,
     turnMs: view.players[g.turn]?.connected === false ? 10_000 : 60_000,
@@ -1878,6 +1882,13 @@ function onRoomState(view) {
   } else if (finished && !$('result').hidden) {
     showResult(true); // 방장이 바뀌는 등 내용이 바뀌었을 수 있다
   }
+}
+
+/** 아이템전: 이 자리가 칸 지우기를 몇 번 썼는지 (기본 1개 + 산 것 - 남은 것) */
+function erasesUsed(g, seat) {
+  const it = g.items?.find((x) => x.seat === seat);
+  if (!it) return 0;
+  return Math.max(0, 1 + (it.bought?.erase ?? 0) - it.erase);
 }
 
 /** 아이템전: 내 아이템과 지금 쓸 수 있는지. 관전자나 기본전이면 null. */
