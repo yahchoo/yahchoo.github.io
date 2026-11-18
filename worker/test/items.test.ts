@@ -112,3 +112,38 @@ describe('아이템 사기', () => {
     expect(ids).toContain(id);
   });
 });
+
+describe('혼자 하기 아이템전', async () => {
+  const { newSolo, soloRoll, soloScore, soloItem, soloBuy, isFinished } = await import('../src/solo');
+  it('기본전은 아이템이 없다', () => {
+    const s = soloRoll(newSolo(), null, first);
+    expect(() => soloItem(s, 'flip', 0)).toThrow('아이템전이 아니에요');
+  });
+  it('뒤집기·한 번 더·칸 지우기·사기', () => {
+    let s = newSolo(true);
+    expect(() => soloItem(s, 'flip', 0)).toThrow('굴린 뒤에');
+    s = soloRoll(s, null, first);
+    s = soloItem(s, 'flip', 1);
+    expect(s.dice).toEqual([1, 6, 1, 1, 1]);
+    expect(() => soloItem(s, 'flip', 1)).toThrow('이미 쓴');
+    s = soloBuy(s, 'flip');
+    expect(() => soloBuy(s, 'flip')).toThrow('아직 남아 있는');
+    s = soloItem(s, 'flip', 1);
+    expect(() => soloBuy(s, 'flip')).toThrow('이미 한 번 샀어요');
+    expect(() => soloItem(s, 'reroll', null)).toThrow('세 번 다');
+    s = soloRoll(soloRoll(s, [false, false, false, false, false], first), [false, false, false, false, false], first);
+    s = soloItem(s, 'reroll', null);
+    expect(s.rollsLeft).toBe(1);
+    s = soloScore(soloRoll(s, null, first), 'ones');
+    expect(s.bonusRoll).toBe(false);
+    expect(s.items).toEqual({ reroll: 0, erase: 1, flip: 0 });
+    // 12칸을 다 채운 뒤에도 지운 칸이 있으면 끝나지 않는다
+    for (const c of CATEGORIES.filter((c) => c !== 'ones')) {
+      if (c === 'yacht') s = soloItem(soloRoll(s, null, first), 'erase', 'ones');
+      s = soloScore(soloRoll(s, null, first), c);
+    }
+    expect(isFinished(s)).toBe(false);
+    s = soloScore(soloRoll(s, null, first), 'ones');
+    expect(isFinished(s)).toBe(true);
+  });
+});

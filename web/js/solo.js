@@ -113,6 +113,9 @@ class LocalSoloGame {
     }
     this.rollSeq = 0;
     this.lastScored = null;
+    this.items = null; // 오프라인 판은 아이템전 없음
+    this.bought = null;
+    this.bonusRoll = false;
   }
 
   save() {
@@ -178,6 +181,9 @@ class ServerSoloGame {
     this.rollsLeft = view.rollsLeft;
     this.rollSeq = view.rollSeq;
     this.rankable = view.rankable;
+    this.items = view.items ?? null;
+    this.bought = view.bought ?? null;
+    this.bonusRoll = !!view.bonusRoll;
     this.linked = !!view.linked;
     this.claimable = !!view.claimable;
     // 서버에 저장된 상태 그대로. 다음 요청에 함께 보내면 서버가 다시 읽지 않아 빨라진다.
@@ -194,6 +200,26 @@ class ServerSoloGame {
       this.apply(view);
     }).finally(() => {
       this.rolling = false;
+    });
+  }
+
+  /** 아이템 쓰기 (아이템전). arg: erase는 칸 이름, flip은 주사위 번호. */
+  useItem(item, arg) {
+    if (this.rolling) return Promise.resolve();
+    const body = { gameId: this.gameId, item, sync: this.sync };
+    if (item === 'flip') body.index = arg;
+    if (item === 'erase') body.category = arg;
+    return this.enqueue(async () => {
+      this.apply(await api('/api/solo/item', body));
+    });
+  }
+
+  /** 다 쓴 아이템을 포인트로 한 번 더 산다. 남은 포인트를 돌려준다. */
+  buy(item) {
+    return this.enqueue(async () => {
+      const view = await api('/api/solo/buy', { gameId: this.gameId, item });
+      this.apply(view);
+      return view.balance;
     });
   }
 
@@ -219,7 +245,14 @@ class ServerSoloGame {
 /* 두 게임 공통 */
 for (const Game of [LocalSoloGame, ServerSoloGame]) {
   Object.defineProperties(Game.prototype, {
-    round: { get() { return Math.min(filledCount(this.sheet) + 1, CATEGORIES.length); } },
+    // 몇 번째 턴인지. 칸 지우기를 쓴 만큼 더한다 (12를 넘으면 화면에 '추가 턴'으로).
+    round: {
+      get() {
+        if (isComplete(this.sheet)) return CATEGORIES.length;
+        const erased = this.items ? Math.max(0, 1 + (this.bought?.erase ?? 0) - this.items.erase) : 0;
+        return filledCount(this.sheet) + erased + 1;
+      },
+    },
     done: { get() { return isComplete(this.sheet); } },
     total: { get() { return totalFor(this.sheet); } },
   });
@@ -235,7 +268,7 @@ for (const Game of [LocalSoloGame, ServerSoloGame]) {
  * 서버에 연결할 수 없으면 기기에서 굴리는 오프라인 게임으로 시작한다.
  * 돌려주는 값: { game, offlineReason }
  */
-export async function openSolo({ fresh = false } = {}) {
+export async function openSolo({ fresh = false, items = false } = {}) {
   if (fresh) clearSoloSaves();
 
   const serverId = read(SERVER_KEY);
@@ -258,7 +291,7 @@ export async function openSolo({ fresh = false } = {}) {
 
   if (!apiBase()) return { game: new LocalSoloGame(null), offlineReason: '서버가 연결되지 않아 랭킹에 올릴 수 없어요' };
   try {
-    const view = await api('/api/solo/start', {});
+    const view = await api('/api/solo/start', { items });
     return { game: new ServerSoloGame(view), offlineReason: null };
   } catch (err) {
     return { game: new LocalSoloGame(null), offlineReason: `${err.message}. 이번 판은 랭킹에 올릴 수 없어요` };

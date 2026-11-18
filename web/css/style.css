@@ -1049,3 +1049,20 @@ html { touch-action: manipulation; }
 .item-btn.buy .item-ct { background: var(--kelp); }
 
 #confirm-text { white-space: pre-line; }
+
+/* 혼자 하기: 기본전·아이템전 고르기 */
+.solo-pick-card h2 { margin: 0 0 14px; font-family: var(--display); font-weight: 400; font-size: 26px; text-align: center; }
+.solo-pick-card .rules-pick { margin-bottom: 10px; }
+.solo-pick-card .rule-opt { min-height: 110px; }
+.solo-pick-card .rule-opt[aria-checked="true"] { border-color: var(--line); box-shadow: none; background: var(--paper); }
+.solo-pick-card .rule-opt:hover, .solo-pick-card .rule-opt:focus-visible { border-color: var(--navy); }
+.solo-pick-note { margin: 0 0 14px; font-size: 13px; color: var(--ink-soft); text-align: center; line-height: 1.5; }
+
+/* 랭킹: 아이템전 기록 표시 */
+.rank-items {
+  display: inline-flex; align-items: center; flex: none; gap: 2px; padding: 3px 6px; border-radius: 999px; line-height: 0;
+  background: var(--signal-yellow); color: #13234a; vertical-align: middle;
+}
+.rank-items .it-dot { display: block; width: 12px; height: 12px; }
+.rank-items .it-dot svg { display: block; }
+.rank-list .dt.with-items { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }

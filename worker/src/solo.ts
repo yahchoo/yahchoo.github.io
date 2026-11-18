@@ -11,6 +11,7 @@ import {
   type Category,
   type Sheet,
 } from '../../web/js/rules.js';
+import { ITEM_KINDS, type ItemCounts, type ItemKind } from './match';
 
 export interface SoloState {
   sheet: Sheet;
@@ -18,6 +19,12 @@ export interface SoloState {
   held: boolean[];
   rollsLeft: number;
   rollSeq: number;
+  /** 아이템전: 남은 아이템. 기본전이면 없음. (규칙은 같이 하기와 같다) */
+  items?: ItemCounts | null;
+  /** 포인트로 한 번 더 산 아이템 (한 판에 종류별로 한 번) */
+  bought?: ItemCounts;
+  /** 이번 차례에 '한 번 더 굴리기'를 썼다 */
+  bonusRoll?: boolean;
 }
 
 export class SoloError extends Error {}
@@ -29,8 +36,9 @@ export const GAME_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function newSolo(): SoloState {
+export function newSolo(items = false): SoloState {
   return {
+    ...(items ? { items: { reroll: 1, erase: 1, flip: 1 }, bought: { reroll: 0, erase: 0, flip: 0 }, bonusRoll: false } : {}),
     sheet: {},
     dice: Array(DICE_COUNT).fill(0),
     held: Array(DICE_COUNT).fill(false),
@@ -73,11 +81,60 @@ export function soloScore(state: SoloState, category: unknown): SoloState {
   if (state.rollsLeft === ROLLS_PER_TURN) throw new SoloError('먼저 주사위를 굴려 주세요');
   if (state.sheet[category] !== undefined) throw new SoloError('이미 적은 칸이에요');
   return {
+    ...state,
     sheet: { ...state.sheet, [category as Category]: scoreFor(category, state.dice) },
     dice: Array(DICE_COUNT).fill(0),
     held: Array(DICE_COUNT).fill(false),
     rollsLeft: ROLLS_PER_TURN,
     rollSeq: state.rollSeq,
+    ...(state.items ? { bonusRoll: false } : {}),
+  };
+}
+
+function itemKind(item: unknown): ItemKind {
+  if (typeof item !== 'string' || !ITEM_KINDS.includes(item as ItemKind)) throw new SoloError('아이템을 다시 골라 주세요');
+  return item as ItemKind;
+}
+
+/** 아이템 쓰기 (같이 하기 useItem과 같은 규칙). arg: erase는 칸 이름, flip은 주사위 번호. */
+export function soloItem(state: SoloState, item: unknown, arg: unknown): SoloState {
+  if (isFinished(state)) throw new SoloError('이미 끝난 게임이에요');
+  if (!state.items) throw new SoloError('아이템전이 아니에요');
+  const kind = itemKind(item);
+  if (state.items[kind] <= 0) throw new SoloError('이미 쓴 아이템이에요');
+  const rolled = state.rollsLeft < ROLLS_PER_TURN;
+  const next: SoloState = { ...state, items: { ...state.items, [kind]: state.items[kind] - 1 } };
+  if (kind === 'reroll') {
+    if (!rolled || state.rollsLeft > 0) throw new SoloError('세 번 다 굴린 뒤에 쓸 수 있어요');
+    next.rollsLeft = 1;
+    next.bonusRoll = true;
+  } else if (kind === 'flip') {
+    if (!rolled) throw new SoloError('주사위를 굴린 뒤에 쓸 수 있어요');
+    if (typeof arg !== 'number' || !Number.isInteger(arg) || arg < 0 || arg >= DICE_COUNT) {
+      throw new SoloError('뒤집을 주사위를 골라 주세요');
+    }
+    next.dice = state.dice.map((d, i) => (i === arg ? 7 - d : d));
+  } else {
+    if (!isCategory(arg)) throw new SoloError('지울 칸을 골라 주세요');
+    if (state.sheet[arg] === undefined) throw new SoloError('아직 적지 않은 칸이에요');
+    const sheet = { ...state.sheet };
+    delete sheet[arg];
+    next.sheet = sheet;
+  }
+  return next;
+}
+
+/** 다 쓴 아이템을 하나 더 산다 (포인트 차감은 밖에서). 한 판에 종류별로 한 번. */
+export function soloBuy(state: SoloState, item: unknown): SoloState {
+  if (isFinished(state)) throw new SoloError('이미 끝난 게임이에요');
+  if (!state.items) throw new SoloError('아이템전이 아니에요');
+  const kind = itemKind(item);
+  if (state.items[kind] > 0) throw new SoloError('아직 남아 있는 아이템이에요');
+  if (state.bought?.[kind]) throw new SoloError('이번 판에는 이미 한 번 샀어요');
+  return {
+    ...state,
+    items: { ...state.items, [kind]: state.items[kind] + 1 },
+    bought: { ...(state.bought ?? { reroll: 0, erase: 0, flip: 0 }), [kind]: 1 },
   };
 }
 

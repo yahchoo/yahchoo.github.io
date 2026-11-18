@@ -178,9 +178,39 @@ function showHome() {
 $('solo-new').addEventListener('click', () => {
   confirmExit('하던 게임을 버리고 처음부터 새로 할까요? 지금까지 적은 점수는 사라져요.', () => {
     clearSoloSaves();
-    startSolo();
+    pickSolo();
   }, '새로 하기');
 });
+
+/* 혼자 하기: 기본전 / 아이템전 고르기 (새로 시작할 때만) */
+const SOLO_ITEMS_KEY = 'yacht.solo.items';
+function lastSoloItems() {
+  try {
+    return localStorage.getItem(SOLO_ITEMS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function pickSolo() {
+  const last = lastSoloItems();
+  for (const b of document.querySelectorAll('.solo-opt')) {
+    b.setAttribute('aria-checked', String((b.dataset.soloItems === '1') === last));
+  }
+  openOverlay('solo-pick');
+  document.querySelector(`.solo-opt[data-solo-items="${last ? 1 : 0}"]`)?.focus();
+}
+for (const btn of document.querySelectorAll('.solo-opt')) {
+  btn.addEventListener('click', () => {
+    const items = btn.dataset.soloItems === '1';
+    try {
+      localStorage.setItem(SOLO_ITEMS_KEY, items ? '1' : '0');
+    } catch {
+      // 저장 못 해도 진행
+    }
+    closeOverlay('solo-pick');
+    startSolo({ fresh: true, items });
+  });
+}
 
 let homeDiceDone = false;
 function paintHomeDice() {
@@ -202,7 +232,10 @@ for (const btn of document.querySelectorAll('[data-go]')) {
   btn.addEventListener('click', () => {
     const to = btn.dataset.go;
     if (to === 'home') showHome();
-    else if (to === 'solo') startSolo();
+    else if (to === 'solo') {
+      if (hasSoloInProgress()) startSolo();
+      else pickSolo();
+    }
     else if (to === 'online') showOnline();
     else if (to === 'ranking') showRanking();
     else if (to === 'closet') showCloset();
@@ -275,7 +308,7 @@ $('game-restart').addEventListener('click', () => {
   if (ui.kind !== 'solo' || !solo) return;
   const restart = () => {
     closeOverlay('result');
-    startSolo({ fresh: true });
+    pickSolo();
   };
   const started = filledCount(solo.sheet) > 0 || solo.rollsLeft < ROLLS_PER_TURN;
   if (started && !solo.done) {
@@ -323,7 +356,8 @@ function onHold(i) {
     }
     ui.itemMode = null;
     ui.flipPick = null;
-    room.conn?.send({ type: 'item', item: 'flip', index: i });
+    if (ui.kind === 'solo') soloItemAction('flip', i);
+    else room.conn?.send({ type: 'item', item: 'flip', index: i });
     return;
   }
   // 결과를 기다리는 중에는 눈을 모르니 막고, 결과가 온 뒤 주사위가 멈추는 중에는 바로 받는다.
@@ -362,7 +396,8 @@ function onItem(id) {
   ui.eraseArmed = null;
   if (id === 'reroll') {
     ui.itemMode = null;
-    room.conn?.send({ type: 'item', item: 'reroll' });
+    if (ui.kind === 'solo') soloItemAction('reroll');
+    else room.conn?.send({ type: 'item', item: 'reroll' });
     haptic?.('light');
     return;
   }
@@ -385,7 +420,17 @@ function onBuy(id) {
   }
   confirmExit(
     `${it.full}를 ${ITEM_BUY_COST}포인트로 한 번 더 살까요? 한 판에 한 번만 살 수 있어요.\n\n지금 ${points}포인트 → 산 뒤 ${points - ITEM_BUY_COST}포인트`,
-    () => room.conn?.send({ type: 'buy', item: id }),
+    () => {
+      if (ui.kind !== 'solo') {
+        room.conn?.send({ type: 'buy', item: id });
+        return;
+      }
+      soloAction(async () => {
+        const balance = await solo.buy(id);
+        if (typeof balance === 'number') updatePoints(balance);
+        toast(`${it.full}를 샀어요 (-${ITEM_BUY_COST}P)`);
+      });
+    },
     `${ITEM_BUY_COST}P로 사기`,
     { cancelText: '취소', danger: false },
   );
@@ -401,7 +446,27 @@ function onErase(cat) {
   }
   ui.itemMode = null;
   ui.eraseArmed = null;
-  room.conn?.send({ type: 'item', item: 'erase', category: cat });
+  if (ui.kind === 'solo') soloItemAction('erase', cat);
+  else room.conn?.send({ type: 'item', item: 'erase', category: cat });
+}
+
+/** 혼자 하기: 아이템 쓰기 (서버 확인 뒤 알림·뒤집기 움직임) */
+function soloItemAction(item, arg) {
+  const before = item === 'flip' ? solo.dice[arg] : null;
+  soloAction(async () => {
+    await solo.useItem(item, arg);
+    if (item === 'reroll') toast('한 번 더 굴릴 수 있어요');
+    else if (item === 'erase') toast(`${CATEGORY_INFO[arg].name} 칸을 지웠어요. 나중에 다시 채울 수 있어요`);
+    else {
+      toast(`주사위 뒤집기 ${before} → ${7 - before}`);
+      queueMicrotask(() => {
+        const b = diceButtons[arg];
+        b.classList.remove('flipped');
+        void b.offsetWidth;
+        b.classList.add('flipped');
+      });
+    }
+  });
 }
 
 function renderItemBar(m) {
@@ -1105,7 +1170,7 @@ let soloBusy = false;
 let soloOpening = 0;
 
 /** 혼자 하기 시작. 하던 게임이 있으면 이어서 한다. fresh면 처음부터. */
-async function startSolo({ fresh = false } = {}) {
+async function startSolo({ fresh = false, items = false } = {}) {
   leaveGameState();
   ui.kind = 'solo';
   solo = null;
@@ -1122,7 +1187,7 @@ async function startSolo({ fresh = false } = {}) {
   $('game-restart').hidden = false;
 
   const ticket = ++soloOpening;
-  const { game, offlineReason } = await openSolo({ fresh });
+  const { game, offlineReason } = await openSolo({ fresh, items });
   if (ticket !== soloOpening || ui.kind !== 'solo') return; // 그 사이 다른 화면으로 감
   solo = game;
   soloBusy = false;
@@ -1185,6 +1250,18 @@ function renderSolo() {
     canRoll: ready && solo.rollsLeft > 0,
     canHold: ready && solo.rollsLeft > 0 && solo.rollsLeft < ROLLS_PER_TURN,
     canScore: ready && solo.rollsLeft < ROLLS_PER_TURN,
+    bonusRoll: !!solo.bonusRoll,
+    // 아이템전: 포인트로 사기는 로그인한 상태로 시작한 판만 (서버도 같은 조건)
+    items: solo.items
+      ? itemState({
+          mine: solo.items,
+          sheet: solo.sheet,
+          bought: solo.bought ?? {},
+          canBuy: !solo.done && solo.linked,
+          rollsLeft: solo.rollsLeft,
+          myTurn: ready,
+        })
+      : null,
     finished: solo.done,
     previewCol: 0,
     teams: null,
@@ -1439,7 +1516,17 @@ async function loadRanking(period) {
       who = el('span', 'ini', e.initials);
     }
     if (isMine) who.append(el('span', 'tag me', '나'));
-    li.append(rk, who, el('span', 'dt', shortDate(e.playedAt)), el('span', 'sc', String(e.score)));
+    // 날짜 아래에 아이템전 표시 (이름 자리를 줄이지 않게)
+    const dt = el('span', 'dt', shortDate(e.playedAt));
+    if (e.items) {
+      dt.classList.add('with-items');
+      const ic = el('span', 'rank-items');
+      for (const it of GAME_ITEMS) ic.append(itemIcon(it.id, 'it-dot'));
+      ic.title = '아이템전 기록';
+      ic.setAttribute('aria-label', '아이템전');
+      dt.append(ic);
+    }
+    li.append(rk, who, dt, el('span', 'sc', String(e.score)));
     list.append(li);
   }
   list.querySelector('li.focus')?.scrollIntoView({ block: 'center' });
@@ -1449,10 +1536,10 @@ async function loadRanking(period) {
 
 let selectedMode = '1v1';
 let selectedItems = false;
-for (const btn of document.querySelectorAll('.rule-opt')) {
+for (const btn of document.querySelectorAll('.rule-opt[data-items]')) {
   btn.addEventListener('click', () => {
     selectedItems = btn.dataset.items === '1';
-    for (const b of document.querySelectorAll('.rule-opt')) b.setAttribute('aria-checked', String(b === btn));
+    for (const b of document.querySelectorAll('.rule-opt[data-items]')) b.setAttribute('aria-checked', String(b === btn));
   });
 }
 for (const btn of document.querySelectorAll('.mode')) {
@@ -1896,18 +1983,23 @@ function itemModel(view, g, myTurn) {
   if (!view.items || !g.items || view.spectator) return null;
   const mine = g.items.find((it) => it.seat === view.you) ?? { reroll: 0, erase: 0, flip: 0 };
   const sheet = g.sheets.find((s) => s.seat === view.you)?.scores ?? {};
-  const rolled = g.rollsLeft < ROLLS_PER_TURN;
+  const bought = g.items.find((it) => it.seat === view.you)?.bought ?? {};
+  const canBuy = view.phase === 'playing' && filledCount(sheet) < CATEGORIES.length && !view.players[view.you]?.left;
+  return itemState({ mine, sheet, bought, canBuy, rollsLeft: g.rollsLeft, myTurn });
+}
+
+/** 아이템 버튼 상태 (같이 하기·혼자 하기 공통) */
+function itemState({ mine, sheet, bought, canBuy, rollsLeft, myTurn }) {
+  const rolled = rollsLeft < ROLLS_PER_TURN;
   const why = {};
   const can = {};
   const check = (id, ok, reason) => {
     can[id] = myTurn && mine[id] > 0 && ok;
     if (!can[id]) why[id] = !myTurn ? '내 차례에 쓸 수 있어요' : mine[id] <= 0 ? '이미 쓴 아이템이에요' : reason;
   };
-  check('reroll', rolled && g.rollsLeft === 0, '세 번 다 굴린 뒤에 쓸 수 있어요');
+  check('reroll', rolled && rollsLeft === 0, '세 번 다 굴린 뒤에 쓸 수 있어요');
   check('flip', rolled, '주사위를 굴린 뒤에 쓸 수 있어요');
   check('erase', filledCount(sheet) > 0, '아직 적은 칸이 없어요');
-  const bought = g.items.find((it) => it.seat === view.you)?.bought ?? {};
-  const canBuy = view.phase === 'playing' && filledCount(sheet) < CATEGORIES.length && !view.players[view.you]?.left;
   return { mine, can, why, myTurn, bought, canBuy };
 }
 
@@ -2098,7 +2190,7 @@ function showResult(open) {
     actionBtn('점수판 보기', 'btn-ghost', viewSheet);
     actionBtn('한 판 더', 'btn-primary', () => {
       closeOverlay('result');
-      startSolo({ fresh: true });
+      startSolo({ fresh: true, items: !!solo?.items || lastSoloItems() });
     });
     if (open) {
       openOverlay('result');

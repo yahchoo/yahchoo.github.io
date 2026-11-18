@@ -8,6 +8,8 @@ import {
   isFinished,
   newSolo,
   parseState,
+  soloBuy,
+  soloItem,
   soloRoll,
   soloScore,
   soloTotal,
@@ -16,9 +18,9 @@ import {
   weekStart,
 } from './solo';
 import { HttpError, json, readJson } from './http';
-import { accountRoute, grantPoints, optionalUser, requireUser } from './account';
+import { accountRoute, grantPoints, optionalUser, requireUser, spendPoints } from './account';
 import { parseAvatar } from '../../web/js/avatar.js';
-import { scorePoints } from '../../web/js/points.js';
+import { ITEM_BUY_COST, scorePoints } from '../../web/js/points.js';
 import { withoutPrefix } from './routing';
 
 export { YachtRoom };
@@ -164,6 +166,10 @@ function soloView(
     held: state.held,
     rollsLeft: state.rollsLeft,
     rollSeq: state.rollSeq,
+    /** 아이템전: 남은 아이템과 산 아이템. 기본전이면 null. */
+    items: state.items ?? null,
+    bought: state.items ? (state.bought ?? { reroll: 0, erase: 0, flip: 0 }) : null,
+    bonusRoll: !!state.bonusRoll,
     finished,
     total: soloTotal(state),
     /** 로그인한 계정의 판: 끝나면 포인트와 랭킹이 자동으로 들어간다. */
@@ -183,9 +189,15 @@ async function loadGame(env: Env, id: string): Promise<GameRow> {
 
 async function startSolo(request: Request, env: Env): Promise<Response> {
   const user = await optionalUser(request, env);
+  let items = false;
+  try {
+    items = ((await request.json()) as { items?: unknown })?.items === true;
+  } catch {
+    // 빈 요청이면 기본전
+  }
   const id = crypto.randomUUID();
   const now = Date.now();
-  const state = newSolo();
+  const state = newSolo(items);
   const raw = JSON.stringify(state);
   await env.DB.prepare('INSERT INTO solo_games (id, state, started_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?)')
     .bind(id, raw, now, now, user?.id ?? null)
@@ -221,15 +233,22 @@ async function userRank(env: Env, userId: string, since: number): Promise<{ best
 /**
  * 로그인한 계정의 판이 끝났을 때: 점수만큼 포인트를 주고 랭킹에 올린다. (몇 번 불려도 한 번만)
  */
-async function settleUserGame(env: Env, row: Pick<GameRow, 'id'>, userId: string, total: number, finishedAt: number) {
+async function settleUserGame(
+  env: Env,
+  row: Pick<GameRow, 'id'>,
+  userId: string,
+  total: number,
+  finishedAt: number,
+  items: boolean,
+) {
   const points = scorePoints(total);
   const earned = await grantPoints(env, userId, points, 'solo', row.id);
   await env.DB.batch([
     env.DB.prepare('UPDATE solo_games SET ranked = 1 WHERE id = ? AND ranked = 0').bind(row.id),
     env.DB.prepare(
-      `INSERT INTO rankings (game_id, initials, score, played_at, created_at, user_id)
-       VALUES (?, '', ?, ?, ?, ?) ON CONFLICT(game_id) DO NOTHING`,
-    ).bind(row.id, total, finishedAt, Date.now(), userId),
+      `INSERT INTO rankings (game_id, initials, score, played_at, created_at, user_id, items)
+       VALUES (?, '', ?, ?, ?, ?, ?) ON CONFLICT(game_id) DO NOTHING`,
+    ).bind(row.id, total, finishedAt, Date.now(), userId, items ? 1 : 0),
   ]);
   const now = Date.now();
   const me = await env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(userId).first<{ points: number }>();
@@ -310,7 +329,7 @@ async function applySolo(
   const stored = { state: nextRaw, version: updated.version };
 
   if (finished && updated.user_id) {
-    const reward = await settleUserGame(env, { id: gameId }, updated.user_id, total, updated.finished_at ?? now);
+    const reward = await settleUserGame(env, { id: gameId }, updated.user_id, total, updated.finished_at ?? now, !!next.items);
     return json({ ...soloView(gameId, next, { ...updated, ranked: 1 }, now, stored), reward });
   }
   return json(soloView(gameId, next, updated, now, stored));
@@ -330,8 +349,44 @@ async function claimSolo(request: Request, env: Env): Promise<Response> {
     if (!linked.meta.changes) throw new HttpError(409, '이미 다른 계정으로 받은 판이에요');
   }
   // 이니셜로 이미 등록한 판이면 랭킹은 그대로 두고 포인트만 준다.
-  const reward = await settleUserGame(env, row, user.id, row.total, row.finished_at);
+  const reward = await settleUserGame(env, row, user.id, row.total, row.finished_at, !!parseState(row.state).items);
   return json({ reward });
+}
+
+/**
+ * 아이템전: 다 쓴 아이템을 포인트로 한 번 더 산다. 로그인한 상태로 시작한(내 계정) 판만.
+ * 포인트를 먼저 빼고, 게임에 넣지 못하면(그 사이 바뀜 등) 돌려준다.
+ */
+async function buySoloItem(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(request, env);
+  const body = await readJson(request);
+  const gameId = requireGameId(body.gameId);
+  let row = await loadGame(env, gameId);
+  if (row.user_id !== user.id) throw new HttpError(409, '로그인한 상태로 시작한 판에서만 살 수 있어요');
+  try {
+    soloBuy(parseState(row.state), body.item);
+  } catch (err) {
+    if (err instanceof SoloError) throw new HttpError(409, err.message);
+    throw err;
+  }
+  const ok = await spendPoints(env, user.id, ITEM_BUY_COST, 'item');
+  if (!ok) throw new HttpError(409, `포인트가 부족해요. 아이템은 ${ITEM_BUY_COST}포인트예요`);
+  let res: Response | null = null;
+  try {
+    for (let i = 0; i < 2 && !res; i++) {
+      if (i > 0) row = await loadGame(env, gameId);
+      res = await applySolo(env, row.id, parseState(row.state), row.state, row.version, (s) => soloBuy(s, body.item), body);
+    }
+  } catch (err) {
+    await grantPoints(env, user.id, ITEM_BUY_COST, 'item_refund', crypto.randomUUID());
+    throw err;
+  }
+  if (!res) {
+    await grantPoints(env, user.id, ITEM_BUY_COST, 'item_refund', crypto.randomUUID());
+    throw new HttpError(409, '다른 요청과 겹쳤어요. 다시 시도해 주세요');
+  }
+  const me = await env.DB.prepare('SELECT points FROM users WHERE id = ?').bind(user.id).first<{ points: number }>();
+  return json({ ...((await res.json()) as Record<string, unknown>), balance: me?.points ?? 0 });
 }
 
 interface RankingRow {
@@ -340,6 +395,7 @@ interface RankingRow {
   score: number;
   played_at: number;
   user_id: string | null;
+  items?: number;
   nickname: string | null;
   avatar: string | null;
 }
@@ -361,11 +417,11 @@ async function submitRanking(request: Request, env: Env): Promise<Response> {
   const [marked, inserted] = await env.DB.batch([
     env.DB.prepare('UPDATE solo_games SET ranked = 1 WHERE id = ? AND ranked = 0 AND user_id IS NULL').bind(gameId),
     env.DB.prepare(
-      `INSERT INTO rankings (game_id, initials, score, played_at, created_at)
-       SELECT ?1, ?2, ?3, ?4, ?5 WHERE changes() > 0
+      `INSERT INTO rankings (game_id, initials, score, played_at, created_at, items)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE changes() > 0
        ON CONFLICT(game_id) DO NOTHING
        RETURNING id, initials, score, played_at`,
-    ).bind(gameId, initials, row.total, row.finished_at, now),
+    ).bind(gameId, initials, row.total, row.finished_at, now, parseState(row.state).items ? 1 : 0),
   ]);
   const entry = (inserted.results as RankingRow[])[0];
   if (!marked.meta.changes || !entry) throw new HttpError(409, '이미 랭킹에 등록한 게임이에요');
@@ -401,7 +457,7 @@ async function listRankings(request: Request, url: URL, env: Env): Promise<Respo
        ) AS rn
        FROM rankings WHERE played_at >= ?1
      )
-     SELECT r.id, r.initials, r.score, r.played_at, r.user_id, u.nickname, u.avatar
+     SELECT r.id, r.initials, r.score, r.played_at, r.user_id, r.items, u.nickname, u.avatar
        FROM r LEFT JOIN users u ON u.id = r.user_id
       WHERE r.rn = 1
       ORDER BY r.score DESC, r.played_at ASC, r.id ASC
@@ -423,6 +479,8 @@ async function listRankings(request: Request, url: URL, env: Env): Promise<Respo
       avatar: row.user_id ? parseAvatar(row.avatar) : null,
       mine: !!me && row.user_id === me.id,
       score: row.score,
+      /** 아이템전 판 (랭킹은 같이 보여 주고 옆에 아이콘) */
+      items: !!row.items,
       playedAt: row.played_at,
     };
   });
@@ -459,6 +517,10 @@ async function route(request: Request, env: Env): Promise<Response> {
       return updateSolo(request, env, (s, body) => soloRoll(s, body.held, secureRandom));
     case 'POST /api/solo/score':
       return updateSolo(request, env, (s, body) => soloScore(s, body.category));
+    case 'POST /api/solo/item':
+      return updateSolo(request, env, (s, body) => soloItem(s, body.item, body.item === 'flip' ? body.index : body.category));
+    case 'POST /api/solo/buy':
+      return buySoloItem(request, env);
     case 'GET /api/rankings':
       return listRankings(request, url, env);
     case 'POST /api/rankings':
