@@ -58,6 +58,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 화면은 세로로 고정하지만, 세로 화면을 '필수 기능'으로 요구하지는 않는다 (Play에서 태블릿·PC 등 설치 제한 경고 방지) -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
     <!-- 광고 ID (AdMob 맞춤 광고). Play Console 광고 ID 신고와 맞춰야 한다 -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 </manifest>
