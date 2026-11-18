@@ -1103,7 +1103,11 @@ html { touch-action: manipulation; }
 .atk-title { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; color: #c23126; font-family: var(--display); font-size: 26px; }
 .atk-title .item-ic { width: 28px; height: 28px; }
 .atk-target { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0 12px; font-weight: 700; font-size: 18px; }
-.atk-list { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--paper); }
+.atk-list { border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+/* 목록 모서리를 자르지 않아야 맨 위·아래 칸에서 지우개가 잘리지 않는다. 대신 첫·끝 칸 배경을 둥글게 */
+.atk-row:first-child { border-radius: 13px 13px 0 0; }
+.atk-row:last-child { border-radius: 0 0 13px 13px; }
+.atk-eraser { z-index: 2; }
 .atk-row {
   position: relative;
   display: flex; justify-content: space-between; align-items: center;
